@@ -2,8 +2,8 @@ import {
   ARENA,
   ENEMIES,
   FLEET,
+  FLAGSHIP_GUN,
   SIMULATION,
-  VOLLEY,
   WAVES,
   getEnemyStats,
   getWaveEnemyCount,
@@ -37,12 +37,12 @@ function normalizedVelocity(from, to, speed) {
   return { vx: (dx / length) * speed, vy: (dy / length) * speed };
 }
 
-function rayExitDistance(origin, direction) {
+function rayExitDistance(origin, direction, arena) {
   const distances = [];
-  if (direction.x > 0) distances.push((ARENA.maxX - origin.x) / direction.x);
-  if (direction.x < 0) distances.push((ARENA.minX - origin.x) / direction.x);
-  if (direction.y > 0) distances.push((ARENA.maxY - origin.y) / direction.y);
-  if (direction.y < 0) distances.push((ARENA.minY - origin.y) / direction.y);
+  if (direction.x > 0) distances.push((arena.maxX - origin.x) / direction.x);
+  if (direction.x < 0) distances.push((arena.minX - origin.x) / direction.x);
+  if (direction.y > 0) distances.push((arena.maxY - origin.y) / direction.y);
+  if (direction.y < 0) distances.push((arena.minY - origin.y) / direction.y);
   return Math.min(...distances.filter((distance) => distance > 0));
 }
 
@@ -68,6 +68,7 @@ export class GameSimulation {
     this.formationSystem = new FormationSystem(selectedFormation);
     this.nextId = 1;
     this.events = [];
+    this.arena = { ...ARENA };
     this.resetToReady();
   }
 
@@ -78,7 +79,12 @@ export class GameSimulation {
     this.wave = 0;
     this.waveIntermission = 0;
     this.waveResolved = false;
-    this.volleyRemaining = 0;
+    this.flagshipGunEnergy = FLAGSHIP_GUN.firingDuration;
+    this.flagshipGunFiring = false;
+    this.flagshipGunManualControl = false;
+    this.flagshipGunAim = { x: 0, y: ARENA.maxY };
+    this.flagshipGunPulseAccumulator = 0;
+    this.flagshipGunPulseIndex = 0;
     this.formationSystem.transitionRemaining = 0;
     this.formationSystem.cooldownRemaining = 0;
     this.friendlies = this.createFleet();
@@ -111,7 +117,6 @@ export class GameSimulation {
   }
 
   createFriendly(role, slot) {
-    const isCommand = role === 'command';
     const roleStats = this.getFriendlyBaseStats(role);
     const baseHealth = roleStats.health;
     const maxHealth = Math.round(baseHealth * this.progression.upgrades.durabilityMultiplier);
@@ -142,7 +147,8 @@ export class GameSimulation {
     const bossWave = isBossWave(this.wave);
     const count = bossWave ? 3 : getWaveEnemyCount(this.wave);
     const columns = Math.min(6, count);
-    const spacing = Math.min(15, 82 / Math.max(1, columns - 1));
+    const laneHalfWidth = Math.max(20, Math.min(this.arena.maxX * 0.8, 84));
+    const spacing = Math.min(28, (laneHalfWidth * 2) / Math.max(1, columns - 1));
 
     const availableTypes = getAvailableEnemyTypes(this.wave);
     this.enemies = Array.from({ length: count }, (_, index) => {
@@ -228,15 +234,11 @@ export class GameSimulation {
     }
     if (this.status !== 'running') return;
     this.elapsed += dt;
-    const previousVolleyRemaining = this.volleyRemaining;
-    this.volleyRemaining = Math.max(0, this.volleyRemaining - dt);
-    if (previousVolleyRemaining > 0 && this.volleyRemaining === 0) {
-      const flagship = this.getCommandShip();
-      this.emit('volleyReady', { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY });
-    }
+    this.updateFlagshipGun(dt);
     this.formationSystem.update(this.friendlies, dt);
 
     if (this.waveResolved) {
+      this.cancelFlagshipFire('wave-cleared');
       this.waveIntermission -= dt;
       this.updateProjectiles(dt);
       if (this.waveIntermission <= 0) this.beginNextWave();
@@ -252,7 +254,7 @@ export class GameSimulation {
 
   updateFriendlies(dt) {
     for (const ship of this.friendlies) {
-      if (!ship.alive) continue;
+      if (!ship.alive || ship.role === 'command') continue;
       ship.fireCooldown -= dt;
       if (ship.fireCooldown > 0) continue;
 
@@ -287,8 +289,8 @@ export class GameSimulation {
       enemy.y -= enemy.speed * dt;
       enemy.x = clamp(
         enemy.originX + Math.sin(this.elapsed * 0.72 + enemy.phase) * enemy.drift,
-        ARENA.minX + 3,
-        ARENA.maxX - 3,
+        this.arena.minX + 3,
+        this.arena.maxX - 3,
       );
 
       if (enemy.y <= ARENA.defenseLineY) {
@@ -324,7 +326,11 @@ export class GameSimulation {
       projectile.y += projectile.vy * dt;
       projectile.lifetime -= dt;
 
-      if (projectile.lifetime <= 0 || Math.abs(projectile.x) > 70 || Math.abs(projectile.y) > 90) {
+      if (projectile.lifetime <= 0
+        || projectile.x < this.arena.minX - 22
+        || projectile.x > this.arena.maxX + 22
+        || projectile.y < this.arena.minY - 17
+        || projectile.y > this.arena.maxY + 17) {
         projectile.alive = false;
         continue;
       }
@@ -364,38 +370,130 @@ export class GameSimulation {
     this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
   }
 
-  fireVolley(x, y) {
+  beginFlagshipFire(x, y, { automatic = false } = {}) {
     const aim = {
-      x: clamp(x, ARENA.minX, ARENA.maxX),
-      y: clamp(y, ARENA.minY + 10, ARENA.maxY),
+      x: clamp(x, this.arena.minX, this.arena.maxX),
+      y: clamp(y, this.arena.minY, this.arena.maxY),
     };
 
     if (this.status !== 'running' || this.suspended || this.waveResolved) {
-      return { fired: false, reason: 'inactive', target: aim };
+      return { firing: false, reason: 'inactive', target: aim };
     }
 
-    if (this.volleyRemaining > 0) {
-      this.emit('volleyRejected', { ...aim, remaining: this.volleyRemaining });
-      return { fired: false, reason: 'cooldown', target: aim };
+    if (this.flagshipGunFiring) {
+      if (!automatic && this.progression.upgrades.automatedGunnery) {
+        this.flagshipGunManualControl = true;
+        this.flagshipGunAim = aim;
+        this.emit('flagshipGunAimChanged', { ...aim, manual: true });
+        return { firing: true, override: true, target: aim };
+      }
+      return { firing: false, reason: 'already-firing', target: aim };
     }
 
-    this.volleyRemaining = this.getVolleyCooldown();
+    if (this.flagshipGunEnergy < FLAGSHIP_GUN.firingDuration - 0.0001) {
+      this.emit('flagshipGunRejected', { ...aim, remaining: this.getFlagshipGunRechargeRemaining() });
+      return { firing: false, reason: 'cooldown', target: aim };
+    }
+
+    this.flagshipGunFiring = true;
+    this.flagshipGunManualControl = !automatic;
+    this.flagshipGunAim = aim;
+    this.flagshipGunPulseAccumulator = 0;
+    this.emit('flagshipGunStarted', { ...aim, automatic });
+    this.fireFlagshipGunPulse();
+    this.flagshipGunEnergy = Math.max(0, this.flagshipGunEnergy - FLAGSHIP_GUN.pulseInterval);
+    return { firing: true, automatic, target: aim };
+  }
+
+  aimFlagshipFire(x, y) {
+    if (!this.flagshipGunFiring || !this.flagshipGunManualControl) return false;
+    this.flagshipGunAim = {
+      x: clamp(x, this.arena.minX, this.arena.maxX),
+      y: clamp(y, this.arena.minY, this.arena.maxY),
+    };
+    this.emit('flagshipGunAimChanged', { ...this.flagshipGunAim, manual: true });
+    return true;
+  }
+
+  endFlagshipFire() {
+    if (!this.flagshipGunFiring || !this.flagshipGunManualControl) return false;
+    this.flagshipGunManualControl = false;
+    if (this.progression.upgrades.automatedGunnery && this.enemies.some((enemy) => enemy.alive)) {
+      this.emit('flagshipGunAimChanged', { manual: false });
+      return true;
+    }
+    return this.cancelFlagshipFire('released');
+  }
+
+  cancelFlagshipFire(reason = 'cancelled') {
+    if (!this.flagshipGunFiring) return false;
+    this.flagshipGunFiring = false;
+    this.flagshipGunManualControl = false;
+    this.emit('flagshipGunStopped', {
+      reason,
+      energyRatio: this.getFlagshipGunEnergyRatio(),
+      rechargeRemaining: this.getFlagshipGunRechargeRemaining(),
+    });
+    return true;
+  }
+
+  updateFlagshipGun(dt) {
+    if (this.flagshipGunFiring) {
+      if (!this.flagshipGunManualControl && this.progression.upgrades.automatedGunnery) {
+        const target = this.findAutomaticGunTarget();
+        if (target) this.flagshipGunAim = { x: target.x, y: target.y };
+      }
+
+      const consumed = Math.min(dt, this.flagshipGunEnergy);
+      this.flagshipGunEnergy = Math.max(0, this.flagshipGunEnergy - consumed);
+      this.flagshipGunPulseAccumulator += consumed;
+      while (this.flagshipGunPulseAccumulator >= FLAGSHIP_GUN.pulseInterval) {
+        this.flagshipGunPulseAccumulator -= FLAGSHIP_GUN.pulseInterval;
+        this.fireFlagshipGunPulse();
+        if (this.waveResolved || this.status !== 'running') break;
+      }
+      if (this.flagshipGunEnergy <= 0 || this.waveResolved || this.status !== 'running') {
+        this.cancelFlagshipFire(this.flagshipGunEnergy <= 0 ? 'depleted' : 'inactive');
+      }
+      return;
+    }
+
+    if (this.flagshipGunEnergy < FLAGSHIP_GUN.firingDuration) {
+      const previousEnergy = this.flagshipGunEnergy;
+      this.flagshipGunEnergy = Math.min(
+        FLAGSHIP_GUN.firingDuration,
+        this.flagshipGunEnergy + dt * FLAGSHIP_GUN.firingDuration / this.getFlagshipGunCooldown(),
+      );
+      if (previousEnergy < FLAGSHIP_GUN.firingDuration && this.flagshipGunEnergy >= FLAGSHIP_GUN.firingDuration) {
+        const flagship = this.getCommandShip();
+        this.emit('flagshipGunReady', { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY });
+      }
+      return;
+    }
+
+    if (this.progression.upgrades.automatedGunnery && this.status === 'running' && !this.waveResolved) {
+      const target = this.findAutomaticGunTarget();
+      if (target) this.beginFlagshipFire(target.x, target.y, { automatic: true });
+    }
+  }
+
+  fireFlagshipGunPulse() {
     const formation = this.formationSystem.current;
-    const beamHalfWidth = VOLLEY.beamHalfWidth * formation.strikeWidth;
-    const volleyDamage = VOLLEY.damage
-      * formation.volleyDamage
+    const shotHalfWidth = FLAGSHIP_GUN.shotHalfWidth * formation.gunWidth;
+    const pulseDamage = FLAGSHIP_GUN.damagePerSecond * FLAGSHIP_GUN.pulseInterval
+      * formation.gunDamage
       * this.progression.upgrades.volleyDamageMultiplier
       * this.progression.upgrades.formationMasteryMultiplier;
     const flagship = this.getCommandShip();
     const source = { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY };
-    const aimDx = aim.x - source.x;
-    const aimDy = aim.y - source.y;
+    const aimDx = this.flagshipGunAim.x - source.x;
+    const aimDy = this.flagshipGunAim.y - source.y;
     const aimLength = Math.hypot(aimDx, aimDy);
     const direction = aimLength > 0.001
       ? { x: aimDx / aimLength, y: aimDy / aimLength }
       : { x: 0, y: 1 };
-    const boundaryDistance = rayExitDistance(source, direction);
-    let strikeDistance = boundaryDistance;
+    const boundaryDistance = rayExitDistance(source, direction, this.arena);
+    let shotDistance = boundaryDistance;
     let firstHit = null;
 
     for (const enemy of this.enemies) {
@@ -406,57 +504,45 @@ export class GameSimulation {
       if (distanceAlongRay <= 0 || distanceAlongRay > boundaryDistance) continue;
 
       const perpendicularDistance = Math.abs(relativeX * direction.y - relativeY * direction.x);
-      const contactRadius = enemyHullRadius(enemy) + beamHalfWidth;
+      const contactRadius = enemyHullRadius(enemy) + shotHalfWidth;
       if (perpendicularDistance > contactRadius) continue;
 
       const entryDistance = distanceAlongRay
         - Math.sqrt(Math.max(0, contactRadius ** 2 - perpendicularDistance ** 2));
-      if (entryDistance >= strikeDistance) continue;
-      strikeDistance = Math.max(0, entryDistance);
-      firstHit = { enemy, perpendicularDistance };
+      if (entryDistance >= shotDistance) continue;
+      shotDistance = Math.max(0, entryDistance);
+      firstHit = enemy;
     }
 
     const endpoint = {
-      x: source.x + direction.x * strikeDistance,
-      y: source.y + direction.y * strikeDistance,
+      x: source.x + direction.x * shotDistance,
+      y: source.y + direction.y * shotDistance,
     };
-    this.emit('volleyFired', {
+    this.flagshipGunPulseIndex += 1;
+    this.emit('flagshipGunPulse', {
       ...endpoint,
-      aim,
-      beamHalfWidth,
+      aim: { ...this.flagshipGunAim },
+      direction,
+      shotHalfWidth,
       formationId: formation.id,
       source,
-      hitId: firstHit?.enemy.id ?? null,
+      hitId: firstHit?.id ?? null,
+      pulseIndex: this.flagshipGunPulseIndex,
+      manual: this.flagshipGunManualControl,
     });
 
-    const hits = firstHit ? 1 : 0;
-    const precise = firstHit
-      ? firstHit.perpendicularDistance <= VOLLEY.precisionRadius * formation.strikeWidth
-      : false;
-    const preciseHits = precise ? 1 : 0;
     if (firstHit) {
-      const { enemy } = firstHit;
-      const damage = volleyDamage * (precise ? VOLLEY.precisionMultiplier : 1);
-      if (enemy.boss) {
-        const wasProtected = enemy.exposedRemaining <= 0;
-        enemy.exposedRemaining = BOSS.exposureDuration;
-        if (wasProtected) this.emit('bossExposed', { id: enemy.id, x: enemy.x, y: enemy.y });
+      if (firstHit.boss) {
+        const wasProtected = firstHit.exposedRemaining <= 0;
+        firstHit.exposedRemaining = BOSS.exposureDuration;
+        if (wasProtected) this.emit('bossExposed', { id: firstHit.id, x: firstHit.x, y: firstHit.y });
       }
-      this.damageEntity(enemy, damage, 'volley');
-      this.emit('impact', { x: enemy.x, y: enemy.y, faction: 'friendly', targetId: enemy.id, heavy: true });
+      this.damageEntity(firstHit, pulseDamage, 'flagshipGun');
     }
 
     this.removeDestroyedEntities();
     this.resolveWaveIfNeeded();
-    this.emit('volleyResolved', {
-      ...aim,
-      endpoint,
-      hitId: firstHit?.enemy.id ?? null,
-      hits,
-      preciseHits,
-      formationId: formation.id,
-    });
-    return { fired: true, target: aim, endpoint, hitId: firstHit?.enemy.id ?? null, hits, preciseHits };
+    return { endpoint, hitId: firstHit?.id ?? null };
   }
 
   changeFormation(formationId) {
@@ -481,7 +567,6 @@ export class GameSimulation {
     const result = this.progression.purchaseUpgrade(upgradeId);
     if (!result.purchased) return result;
     this.applyFleetUpgrades(upgradeId);
-    this.volleyRemaining = Math.min(this.volleyRemaining, this.getVolleyCooldown());
     this.emit('upgradePurchased', {
       ...result,
       upgrade: this.progression.upgrades.snapshot().find(({ id }) => id === upgradeId),
@@ -523,6 +608,7 @@ export class GameSimulation {
 
   openShop() {
     if (!['ready', 'running', 'paused', 'gameOver'].includes(this.status)) return false;
+    this.cancelFlagshipFire('shop-opened');
     this.preShopStatus = this.status;
     this.status = 'shopping';
     this.emit('shopOpened', {});
@@ -540,6 +626,8 @@ export class GameSimulation {
     const velocity = normalizedVelocity(source, target, options.speed);
     const projectile = {
       id: `projectile-${this.nextId++}`,
+      sourceId: source.id,
+      sourceRole: source.role,
       faction: options.faction,
       x: source.x,
       y: source.y + (options.faction === 'friendly' ? 2.2 : -2.2),
@@ -621,6 +709,7 @@ export class GameSimulation {
 
   endRun() {
     if (this.status === 'gameOver') return;
+    this.cancelFlagshipFire('game-over');
     this.status = 'gameOver';
     this.projectiles = [];
     this.emit('gameOver', {
@@ -680,6 +769,15 @@ export class GameSimulation {
     return candidates[0] ?? null;
   }
 
+  findAutomaticGunTarget() {
+    return this.enemies
+      .filter((enemy) => enemy.alive)
+      .sort((left, right) => {
+        const priority = (enemy) => enemy.boss ? 0 : enemy.elite ? 1 : enemy.type === 'artillery' ? 2 : 3;
+        return priority(left) - priority(right) || left.y - right.y;
+      })[0] ?? null;
+  }
+
   pickEnemyTarget(enemy) {
     const alive = this.friendlies.filter((ship) => ship.alive);
     if (alive.length === 0) return null;
@@ -710,15 +808,24 @@ export class GameSimulation {
 
   getSnapshot() {
     const command = this.getCommandShip();
-    const volleyCooldown = this.getVolleyCooldown();
     return {
       status: this.status,
       elapsed: this.elapsed,
       wave: this.wave,
       waveIntermission: this.waveIntermission,
-      volleyCharge: 1 - this.volleyRemaining / volleyCooldown,
-      volleyRemaining: this.volleyRemaining,
-      volleyCooldown,
+      flagshipGun: {
+        energy: this.flagshipGunEnergy,
+        energyRatio: this.getFlagshipGunEnergyRatio(),
+        firing: this.flagshipGunFiring,
+        manualControl: this.flagshipGunManualControl,
+        recharging: !this.flagshipGunFiring && this.flagshipGunEnergy < FLAGSHIP_GUN.firingDuration,
+        rechargeRemaining: this.getFlagshipGunRechargeRemaining(),
+        maximumDuration: FLAGSHIP_GUN.firingDuration,
+        fullRecharge: this.getFlagshipGunCooldown(),
+        automated: this.progression.upgrades.automatedGunnery,
+        aim: { ...this.flagshipGunAim },
+        pulseIndex: this.flagshipGunPulseIndex,
+      },
       commandHealth: command?.health ?? 0,
       commandMaxHealth: command?.maxHealth ?? FLEET.commandHealth,
       commandShield: command?.shield ?? 0,
@@ -728,11 +835,32 @@ export class GameSimulation {
       projectiles: this.projectiles,
       progression: this.progression.snapshot(),
       formation: this.formationSystem.snapshot(),
+      arena: { ...this.arena },
     };
   }
 
-  getVolleyCooldown() {
-    return VOLLEY.cooldown * this.progression.upgrades.volleyCooldownMultiplier;
+  getFlagshipGunCooldown() {
+    return FLAGSHIP_GUN.fullRecharge * this.progression.upgrades.volleyCooldownMultiplier;
+  }
+
+  getFlagshipGunEnergyRatio() {
+    return this.flagshipGunEnergy / FLAGSHIP_GUN.firingDuration;
+  }
+
+  getFlagshipGunRechargeRemaining() {
+    return this.getFlagshipGunCooldown() * (1 - this.getFlagshipGunEnergyRatio());
+  }
+
+  setArenaBounds(bounds) {
+    if (!bounds) return;
+    const halfWidth = Math.max(28, Math.min(104, Number(bounds.halfWidth) || ARENA.maxX));
+    this.arena = { ...ARENA, minX: -halfWidth, maxX: halfWidth, width: halfWidth * 2 };
+    this.formationSystem.setViewportLayout(halfWidth / ARENA.maxX, Number(bounds.fleetOffsetY) || 0, this.friendlies);
+    for (const enemy of this.enemies) {
+      enemy.originX = clamp(enemy.originX, this.arena.minX + 3, this.arena.maxX - 3);
+      enemy.x = clamp(enemy.x, this.arena.minX + 3, this.arena.maxX - 3);
+    }
+    this.flagshipGunAim.x = clamp(this.flagshipGunAim.x, this.arena.minX, this.arena.maxX);
   }
 
   getPersistentState() {

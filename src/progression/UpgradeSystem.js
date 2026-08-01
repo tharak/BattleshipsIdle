@@ -46,6 +46,10 @@ export class UpgradeSystem {
     return 1 - this.getLevel('volleyCooldown') * 0.05;
   }
 
+  get automatedGunnery() {
+    return this.getLevel('automatedGunnery') > 0;
+  }
+
   get durabilityMultiplier() {
     return 1 + this.getLevel('durability') * 0.14;
   }

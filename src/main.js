@@ -38,6 +38,7 @@ simulation = new GameSimulation({
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);
+simulation.setArenaBounds(gameRenderer.getCombatBounds());
 const audio = new AudioManager({ enabled: true });
 audio.bindUi(document);
 gameRenderer.setScreenShakeEnabled(true);
@@ -93,10 +94,18 @@ const hud = new HudController({
 const targetingInput = new TargetingInput({
   element: gameRenderer.renderer.domElement,
   toWorld: (clientX, clientY) => gameRenderer.screenToWorld(clientX, clientY),
-  onTarget: ({ x, y }) => {
-    const result = simulation.fireVolley(x, y);
+  onStart: ({ x, y }) => {
+    const result = simulation.beginFlagshipFire(x, y);
     consumeAndDispatchEvents();
     return result;
+  },
+  onMove: ({ x, y }) => {
+    simulation.aimFlagshipFire(x, y);
+    consumeAndDispatchEvents();
+  },
+  onEnd: () => {
+    simulation.endFlagshipFire();
+    consumeAndDispatchEvents();
   },
 });
 
@@ -132,7 +141,11 @@ function frame(now) {
 
 function handleVisibilityChange() {
   const hidden = document.hidden;
-  if (hidden) persistNow();
+  if (hidden) {
+    simulation.cancelFlagshipFire('suspended');
+    consumeAndDispatchEvents();
+    persistNow();
+  }
   simulation.setSuspended(hidden);
   if (!hidden) {
     previousTime = performance.now();
@@ -140,7 +153,10 @@ function handleVisibilityChange() {
   }
 }
 
-window.addEventListener('resize', () => gameRenderer.resize(), { passive: true });
+window.addEventListener('resize', () => {
+  const bounds = gameRenderer.resize();
+  simulation.setArenaBounds(bounds);
+}, { passive: true });
 window.addEventListener('pagehide', persistNow);
 document.addEventListener('visibilitychange', handleVisibilityChange);
 

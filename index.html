@@ -13,7 +13,7 @@
   </head>
   <body>
     <main id="game-shell" aria-label="Voidline Command game">
-      <div id="battlefield" aria-label="Fleet battlefield. Tap or click to aim the flagship strike."></div>
+      <div id="battlefield" aria-label="Fleet battlefield. Hold and drag to aim the flagship gun."></div>
 
       <div id="flagship-vitals" class="flagship-vitals" role="status" aria-label="Flagship hull 100 percent, shield 0 percent" hidden>
         <div class="flagship-vitals__row flagship-vitals__row--hull">
@@ -24,20 +24,10 @@
         </div>
       </div>
 
-      <header class="hud hud--top" aria-label="Voidline Command">
-        <div class="brand-lockup">
-          <span class="brand-lockup__mark" aria-hidden="true"></span>
-          <div>
-            <span class="eyebrow">VOIDLINE</span>
-            <strong>COMMAND</strong>
-          </div>
-        </div>
-      </header>
-
       <section id="boss-status" class="boss-status" aria-live="polite" hidden>
         <div><span class="eyebrow eyebrow--danger">MAJOR CONTACT</span><strong id="boss-name">Rift bastion</strong></div>
         <div class="boss-meter" aria-hidden="true"><i id="boss-health-fill"></i></div>
-        <span id="boss-barrier-state">Barrier active // flagship strike required</span>
+        <span id="boss-barrier-state">Barrier active // flagship gun required</span>
       </section>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
@@ -78,14 +68,14 @@
             </svg>
             <small>+48% FLANK</small>
           </button>
-          <button class="formation-option" type="button" data-formation="denseColumn" data-tooltip="Dense column · +42% strike damage" aria-label="Dense column formation. Synchronized strike and 42 percent more flagship strike damage" aria-pressed="false">
+          <button class="formation-option" type="button" data-formation="denseColumn" data-tooltip="Dense column · +42% gun damage" aria-label="Dense column formation. Synchronized cannon and 42 percent more flagship gun damage" aria-pressed="false">
             <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
               <path class="formation-icon__guide" d="M26 3V31"></path>
               <circle cx="26" cy="3" r="2.4"></circle><circle cx="26" cy="8" r="2.4"></circle><circle cx="26" cy="13" r="2.4"></circle>
               <circle cx="26" cy="18" r="2.4"></circle><circle cx="26" cy="23" r="2.4"></circle><circle cx="26" cy="28" r="2.4"></circle>
               <circle class="formation-icon__command" cx="26" cy="32" r="3"></circle>
             </svg>
-            <small>+42% STRIKE</small>
+            <small>+42% GUN</small>
           </button>
           <button id="shop-button" class="dock-upgrade" type="button" aria-label="Open fleet upgrades. 0 salvage available">
             <svg viewBox="0 0 40 32" aria-hidden="true">
@@ -109,11 +99,11 @@
           <span class="eyebrow eyebrow--bright">TACTICAL LINK // ONLINE</span>
           <h1 id="start-title">Hold the voidline.</h1>
           <p>
-            Your fleet fires automatically. Read the enemy approach, then tap or click an attack lane to fire the flagship's heavy beam.
+            Your escorts fire automatically. Hold the battlefield and drag to sweep the flagship's pulsed cannon across the enemy approach.
           </p>
           <div class="control-primer" aria-label="Controls">
-            <div><span class="control-primer__icon">◎</span><span>Tap to aim the flagship's first-contact beam</span></div>
-            <div><span class="control-primer__icon">⌁</span><span>Charge lights around the flagship show readiness</span></div>
+            <div><span class="control-primer__icon">◎</span><span>Hold and drag to aim sustained cannon fire</span></div>
+            <div><span class="control-primer__icon">⌁</span><span>Charge lights show firing energy and cooling</span></div>
           </div>
           <button id="start-button" class="primary-button" type="button">
             <span>Deploy fleet</span><span aria-hidden="true">→</span>

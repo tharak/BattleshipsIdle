@@ -181,22 +181,39 @@ export class AudioManager {
         this.noise({ duration: 0.34, gain: 0.04, cutoff: 360 });
         this.schedule(170, () => this.tone({ frequency: 240, endFrequency: 140, duration: 0.2, gain: 0.025, type: 'square' }));
         break;
-      case 'volleyFired':
-        this.tone({ frequency: 95, endFrequency: 34, duration: 0.48, gain: 0.085, type: 'sawtooth' });
-        this.schedule(34, () => this.tone({ frequency: 780, endFrequency: 120, duration: 0.3, gain: 0.052, type: 'square' }));
+      case 'flagshipGunStarted':
+        this.sequence([
+          { frequency: 118, endFrequency: 260, duration: 0.16, gain: 0.032, type: 'sawtooth' },
+          { delay: 55, frequency: 410, endFrequency: 690, duration: 0.13, gain: 0.024, type: 'triangle' },
+        ]);
         break;
-      case 'volleyResolved':
-        if (event.hits === 0) {
-          this.tone({ frequency: 170, endFrequency: 95, duration: 0.16, gain: 0.014, type: 'sine' });
+      case 'flagshipGunPulse':
+        if (this.canPlay('flagship-gun-pulse', 82)) {
+          this.tone({
+            frequency: event.pulseIndex % 2 === 0 ? 760 : 690,
+            endFrequency: event.hitId ? 145 : 260,
+            duration: 0.1,
+            gain: event.hitId ? 0.028 : 0.022,
+            type: 'square',
+          });
+          if (event.hitId) this.noise({ duration: 0.075, gain: 0.008, cutoff: 920 });
         }
         break;
-      case 'volleyRejected':
+      case 'flagshipGunStopped':
+        if (event.reason === 'depleted') {
+          this.tone({ frequency: 280, endFrequency: 58, duration: 0.32, gain: 0.034, type: 'sawtooth' });
+          this.noise({ duration: 0.22, gain: 0.014, cutoff: 440 });
+        } else {
+          this.tone({ frequency: 310, endFrequency: 170, duration: 0.13, gain: 0.018, type: 'triangle' });
+        }
+        break;
+      case 'flagshipGunRejected':
         this.sequence([
           { frequency: 155, endFrequency: 112, duration: 0.09, gain: 0.018, type: 'square' },
           { delay: 82, frequency: 116, endFrequency: 82, duration: 0.11, gain: 0.016, type: 'square' },
         ]);
         break;
-      case 'volleyReady':
+      case 'flagshipGunReady':
         this.sequence([
           { frequency: 360, endFrequency: 480, duration: 0.12, gain: 0.035, type: 'sine' },
           { delay: 90, frequency: 540, endFrequency: 720, duration: 0.14, gain: 0.038, type: 'sine' },

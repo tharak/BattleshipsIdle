@@ -1,6 +1,6 @@
 # Voidline Command
 
-An original, touch-first browser game about commanding a geometric deep-space fleet. Your ships hold the lower edge of a fixed battlefield, automatically engaging incoming formations while you aim the flagship's heavy weapon at the most dangerous targets.
+An original, touch-first browser game about commanding a geometric deep-space fleet. Your escorts hold the lower edge of a full-screen battlefield while you sweep the flagship's sustained cannon across incoming formations.
 
 This project uses its own setting, silhouettes, color language, and procedural effects. It does not use names, characters, ship designs, story elements, audio, or visual assets from existing franchises.
 
@@ -11,12 +11,12 @@ The latest deployed build will be available at:
 <https://tharak.github.io/BattleshipsIdle/>
 
 - Use the opening deployment overlay to send the fleet into battle.
-- Tap or click an attack lane when all charge lights around the flagship are lit. The beam stops at the first enemy hull or continues to the battlefield boundary.
+- Hold the battlefield and drag to aim the flagship's pulsed cannon. Each shot stops at the first enemy hull or continues to the battlefield boundary.
 - Choose formations from the five persistent fleet-diagram buttons and visible bonus labels along the bottom edge.
 - Open upgrades from the sixth bottom-dock button, which also displays current salvage.
-- Friendly ships fire automatically; the manual flagship strike rewards clear aim and timing.
+- Escort ships fire automatically; the flagship only fires while you hold and aim its cannon.
 - Destroy attackers to earn salvage and advance to harder waves.
-- Boss barriers blunt automatic fire. Land a flagship strike to expose the hull, then capitalize before it restores.
+- Boss barriers blunt automatic fire. Sweep the flagship gun across the boss to expose its hull, then capitalize before the barrier restores.
 - Protect the command ship. If it is destroyed, use **Restart** to begin a new run.
 
 The interface is designed for touchscreens and also supports mouse input on desktop browsers.
@@ -25,19 +25,18 @@ The interface is designed for touchscreens and also supports mouse input on desk
 
 The current prototype includes:
 
-- a responsive Three.js battlefield with original procedural ships and effects;
-- tighter portrait framing that keeps approaching fleets visible without a dead top margin;
+- an edge-to-edge Three.js battlefield with full-height framing, adaptive horizontal combat bounds, and original procedural ships;
 - five animated formations and escalating enemy waves;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire and enemy pressure;
-- a cooldown-limited, first-contact flagship beam that traces to an enemy or the battlefield edge;
-- boss barriers that reward an accurately timed flagship strike;
+- a hold-and-aim pulsed flagship cannon with sustained fire, proportional cooling, turret recoil, tracers, and first-contact impacts;
+- boss barriers that reward actively tracking the target with flagship fire;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
-- flagship-mounted charge lights, ready audio, and persistent in-world hull and shield bars;
+- flagship-mounted energy lights, firing/cooling audio, and persistent in-world hull and shield bars;
 - an always-visible tactical dock with five formation icons, concise bonus text, and the salvage/upgrade control;
 - transient wave announcements plus readable flagship and boss status;
 - distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated strikes;
-- ten progressive upgrade branches with visible current/next effects and costs;
+- eleven progressive upgrade branches, including a 250,000-salvage autonomous-gunnery end-game unlock;
 - persistent salvage, upgrade levels, highest-wave progress, and selected formation in `localStorage`;
 - capped offline patrol earnings with a clear return report;
 - fleet-size, durability, and visible shield upgrades that update the active formation immediately;

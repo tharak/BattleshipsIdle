@@ -9,6 +9,7 @@ export const UPGRADE_ORDER = Object.freeze([
   'resourceGeneration',
   'offlineEarnings',
   'formationMastery',
+  'automatedGunnery',
 ]);
 
 export const UPGRADE_DEFINITIONS = Object.freeze({
@@ -21,12 +22,12 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
     describe: (level) => `+${level * 8}% firing speed`,
   }),
   volleyDamage: Object.freeze({
-    id: 'volleyDamage', name: 'Flagship strike', icon: '◎', maxLevel: 16, baseCost: 85, costGrowth: 1.58,
-    describe: (level) => `+${level * 18}% beam damage`,
+    id: 'volleyDamage', name: 'Flagship gun damage', icon: '◎', maxLevel: 16, baseCost: 85, costGrowth: 1.58,
+    describe: (level) => `+${level * 18}% cannon damage`,
   }),
   volleyCooldown: Object.freeze({
-    id: 'volleyCooldown', name: 'Flagship recharge', icon: '◴', maxLevel: 8, baseCost: 110, costGrowth: 1.68,
-    describe: (level) => `${level * 5}% faster recharge`,
+    id: 'volleyCooldown', name: 'Gun cooling', icon: '◴', maxLevel: 8, baseCost: 110, costGrowth: 1.68,
+    describe: (level) => `${level * 5}% faster gun cooling`,
   }),
   fleetSize: Object.freeze({
     id: 'fleetSize', name: 'Fleet size', icon: '⋔', maxLevel: 5, baseCost: 180, costGrowth: 2.05,
@@ -54,6 +55,10 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
   formationMastery: Object.freeze({
     id: 'formationMastery', name: 'Formation doctrine', icon: '⌘', maxLevel: 12, baseCost: 125, costGrowth: 1.64,
     describe: (level) => `+${level * 5}% formation strengths`,
+  }),
+  automatedGunnery: Object.freeze({
+    id: 'automatedGunnery', name: 'Autonomous gunnery', icon: '◉', maxLevel: 1, baseCost: 250000, costGrowth: 1,
+    describe: (level) => level === 0 ? 'Manual flagship targeting' : 'Automatic priority targeting',
   }),
 });
 

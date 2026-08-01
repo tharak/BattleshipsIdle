@@ -63,6 +63,7 @@ export class GameRenderer {
     this.entityMeshes = new Map();
     this.projectileMeshes = new Map();
     this.effects = [];
+    this.combatBounds = { ...ARENA, halfWidth: ARENA.maxX };
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.battlePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -71,6 +72,7 @@ export class GameRenderer {
     this.shared = this.createSharedResources();
     this.projectilePool = this.createProjectilePool();
     this.effectPool = this.createEffectPool();
+    this.gunPulsePool = this.createGunPulsePool();
     this.createEnvironment();
     this.createTargetMarker();
     this.resize();
@@ -125,6 +127,7 @@ export class GameRenderer {
       haloGeometry: new THREE.RingGeometry(2.2, 2.8, 18),
       ringGeometry: new THREE.RingGeometry(0.86, 1, 32),
       chargeNodeGeometry: new THREE.CircleGeometry(0.24, 8),
+      pulsePlaneGeometry: new THREE.PlaneGeometry(1, 1),
     };
   }
 
@@ -136,25 +139,12 @@ export class GameRenderer {
     rim.position.set(30, 60, 35);
     this.scene.add(ambient, key, rim);
 
-    const grid = new THREE.GridHelper(240, 24, COLORS.grid, COLORS.grid);
+    const grid = new THREE.GridHelper(420, 42, COLORS.grid, COLORS.grid);
     grid.rotation.x = Math.PI / 2;
     grid.position.set(0, 0, -2.8);
     grid.material.transparent = true;
     grid.material.opacity = 0.24;
     this.scene.add(grid);
-
-    const borderPoints = [
-      new THREE.Vector3(ARENA.minX, ARENA.minY, -0.8),
-      new THREE.Vector3(ARENA.maxX, ARENA.minY, -0.8),
-      new THREE.Vector3(ARENA.maxX, ARENA.maxY, -0.8),
-      new THREE.Vector3(ARENA.minX, ARENA.maxY, -0.8),
-      new THREE.Vector3(ARENA.minX, ARENA.minY, -0.8),
-    ];
-    const border = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(borderPoints),
-      new THREE.LineBasicMaterial({ color: COLORS.grid, transparent: true, opacity: 0.65 }),
-    );
-    this.scene.add(border);
 
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(ARENA.minX, ARENA.defenseLineY, -0.4),
@@ -275,12 +265,44 @@ export class GameRenderer {
     });
   }
 
+  createGunPulsePool() {
+    return new ObjectPool({
+      initialSize: 12,
+      create: () => {
+        const group = new THREE.Group();
+        const materials = [
+          new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+          new THREE.MeshBasicMaterial({ color: 0xffe2a1, transparent: true, opacity: 0.76, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+        ];
+        const wake = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[0]);
+        const tracer = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[1]);
+        const packet = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[2]);
+        for (const visual of [wake, tracer, packet]) {
+          visual.frustumCulled = false;
+          visual.renderOrder = 8;
+        }
+        group.add(wake, tracer, packet);
+        group.userData = { materials, wake, tracer, packet, length: 1 };
+        group.visible = false;
+        this.scene.add(group);
+        return group;
+      },
+      reset: (group) => {
+        group.visible = false;
+        group.scale.set(1, 1, 1);
+        group.userData.packet.position.set(0, 0, 0);
+      },
+    });
+  }
+
   createShipMesh(entity) {
     const group = new THREE.Group();
     const friendly = entity.faction === 'friendly';
     const command = entity.role === 'command';
     const scale = (command ? 1.28 : 1) * (entity.scale ?? 1);
 
+    let turret = null;
     if (friendly) {
       const friendlyShape = entity.role === 'lancer'
         ? [[0, 4.4], [-1, 0.1], [-1.45, -2.8], [0, -1.6], [1.45, -2.8], [1, 0.1]]
@@ -305,6 +327,24 @@ export class GameRenderer {
       const core = new THREE.Mesh(new THREE.OctahedronGeometry(command ? 0.7 : 0.48, 0), this.shared.friendlyCoreMaterial);
       core.position.set(0, 0.55, 0.9);
       group.add(core);
+
+      if (command) {
+        turret = new THREE.Group();
+        const turretBaseMaterial = new THREE.MeshBasicMaterial({ color: COLORS.command, transparent: true, opacity: 0.88 });
+        turretBaseMaterial.userData.disposeWithShip = true;
+        const turretBase = new THREE.Mesh(new THREE.CircleGeometry(1.05, 12), turretBaseMaterial);
+        turretBase.position.z = 1.18;
+        const barrelMaterial = new THREE.MeshBasicMaterial({ color: 0xffe5ad });
+        barrelMaterial.userData.disposeWithShip = true;
+        const leftBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.1, 0.42), barrelMaterial);
+        const rightBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.1, 0.42), barrelMaterial);
+        leftBarrel.position.set(-0.48, 1.75, 1.24);
+        rightBarrel.position.set(0.48, 1.75, 1.24);
+        turret.add(turretBase, leftBarrel, rightBarrel);
+        turret.userData.barrels = [leftBarrel, rightBarrel];
+        turret.userData.recoil = 0;
+        group.add(turret);
+      }
     } else {
       const enemyShape = entity.boss
         ? [[0, -4], [-3.8, -2.4], [-5.2, 0.3], [-2.8, 3.4], [0, 2], [2.8, 3.4], [5.2, 0.3], [3.8, -2.4]]
@@ -396,6 +436,7 @@ export class GameRenderer {
     group.userData.chargeGroup = chargeGroup;
     group.userData.halo = halo;
     group.userData.shieldRing = shieldRing;
+    group.userData.turret = turret;
     group.userData.entity = entity;
     this.scene.add(group);
     return group;
@@ -403,7 +444,7 @@ export class GameRenderer {
 
   sync(snapshot, deltaSeconds) {
     this.clockTime += deltaSeconds;
-    this.syncEntities([...snapshot.friendlies, ...snapshot.enemies], snapshot.volleyCharge);
+    this.syncEntities([...snapshot.friendlies, ...snapshot.enemies], snapshot.flagshipGun, deltaSeconds);
     this.syncProjectiles(snapshot.projectiles);
     this.updateEffects(deltaSeconds);
     this.updateTargetMarker(deltaSeconds);
@@ -424,7 +465,8 @@ export class GameRenderer {
       + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
   }
 
-  syncEntities(entities, volleyCharge = 0) {
+  syncEntities(entities, flagshipGun = {}, deltaSeconds = 0) {
+    const energyRatio = flagshipGun.energyRatio ?? 0;
     const activeIds = new Set();
     for (const entity of entities) {
       activeIds.add(entity.id);
@@ -442,14 +484,25 @@ export class GameRenderer {
         group.userData.health.visible = healthRatio < 0.995;
       }
       if (group.userData.chargeGroup) {
-        const litNodes = Math.round(Math.max(0, Math.min(1, volleyCharge)) * group.userData.chargeGroup.children.length);
+        const litNodes = Math.round(Math.max(0, Math.min(1, energyRatio)) * group.userData.chargeGroup.children.length);
         group.userData.chargeGroup.children.forEach((node, index) => {
           const charged = index < litNodes;
+          node.material.color.setHex(flagshipGun.firing ? COLORS.command : COLORS.friendly);
           node.material.opacity = charged ? 0.92 : 0.12;
           node.scale.setScalar(charged ? 1.1 : 0.82);
         });
-        group.userData.chargeGroup.rotation.z -= 0.003 + volleyCharge * 0.004;
-        this.shared.commandMaterial.emissiveIntensity = 0.58 + volleyCharge * 0.55;
+        group.userData.chargeGroup.rotation.z -= (flagshipGun.firing ? 0.026 : 0.004 + energyRatio * 0.004);
+        this.shared.commandMaterial.emissiveIntensity = 0.58 + energyRatio * 0.42 + (flagshipGun.firing ? 0.28 : 0);
+      }
+      if (group.userData.turret) {
+        const aim = flagshipGun.aim ?? { x: entity.x, y: entity.y + 1 };
+        group.userData.turret.rotation.z = Math.atan2(aim.y - entity.y, aim.x - entity.x) - Math.PI / 2;
+        group.userData.turret.userData.recoil = Math.max(0, group.userData.turret.userData.recoil - deltaSeconds * 8);
+        const recoil = group.userData.turret.userData.recoil;
+        group.userData.turret.userData.barrels.forEach((barrel, index) => {
+          const activeBarrel = (flagshipGun.pulseIndex ?? 0) % 2 === index;
+          barrel.position.y = 1.75 - (activeBarrel ? recoil * 0.7 : 0);
+        });
       }
       group.userData.halo.rotation.z += 0.012;
       if (entity.boss) {
@@ -465,7 +518,7 @@ export class GameRenderer {
           (entity.role === 'command' ? 1.75 : 1.28) * (0.9 + shieldRatio * 0.1),
         );
       }
-      const readyPulse = entity.role === 'command' && volleyCharge >= 0.999
+      const readyPulse = entity.role === 'command' && energyRatio >= 0.999
         ? Math.sin(this.clockTime * 5) * 0.035
         : 0;
       const pulse = 1 + Math.sin(this.clockTime * 3 + (entity.slot ?? 0)) * 0.025 + readyPulse;
@@ -512,13 +565,18 @@ export class GameRenderer {
       } else if (event.type === 'destroyed') {
         this.spawnImpact(event.x, event.y, event.faction === 'friendly' ? COLORS.friendly : COLORS.enemy, 3.2);
         this.shake = Math.max(this.shake, event.role === 'command' ? 3.5 : 1.6);
-      } else if (event.type === 'volleyFired') {
-        this.showTarget(event.aim.x, event.aim.y, true, event.beamHalfWidth + 1.4);
-        this.spawnFlagshipStrike(event);
-        this.shake = Math.max(this.shake, 2.8);
-      } else if (event.type === 'volleyRejected') {
+      } else if (event.type === 'flagshipGunStarted') {
+        this.showTarget(event.x, event.y, true, 2.1);
+        this.shake = Math.max(this.shake, 0.85);
+      } else if (event.type === 'flagshipGunPulse') {
+        this.spawnFlagshipGunPulse(event);
+        this.showTarget(event.aim.x, event.aim.y, true, 1.4);
+        this.shake = Math.max(this.shake, event.hitId ? 0.82 : 0.42);
+      } else if (event.type === 'flagshipGunAimChanged' && Number.isFinite(event.x)) {
+        this.showTarget(event.x, event.y, true, 1.6);
+      } else if (event.type === 'flagshipGunRejected') {
         this.showTarget(event.x, event.y, false);
-      } else if (event.type === 'volleyReady') {
+      } else if (event.type === 'flagshipGunReady') {
         this.spawnImpact(event.x, event.y, COLORS.command, 1.9);
       } else if (event.type === 'breach') {
         this.spawnImpact(event.x, event.y, COLORS.enemy, 2.5);
@@ -556,31 +614,36 @@ export class GameRenderer {
     this.effects.push({ type: 'impact', object: group });
   }
 
-  spawnFlagshipStrike(event) {
+  spawnFlagshipGunPulse(event) {
     const dx = event.x - event.source.x;
     const dy = event.y - event.source.y;
-    const length = Math.hypot(dx, dy);
-    const group = new THREE.Group();
-    const materials = [
-      new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-      new THREE.MeshBasicMaterial({ color: 0xffe4a8, transparent: true, opacity: 0.88, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-    ];
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(7.2, length), materials[0]);
-    const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.35, length), materials[1]);
-    const core = new THREE.Mesh(new THREE.PlaneGeometry(0.62, length), materials[2]);
-    for (const visual of [glow, beam, core]) {
-      visual.frustumCulled = false;
-      visual.renderOrder = 8;
-    }
-    group.add(glow, beam, core);
-    group.position.set((event.source.x + event.x) / 2, (event.source.y + event.y) / 2, 4.2);
+    const length = Math.max(0.1, Math.hypot(dx, dy));
+    const group = this.gunPulsePool.acquire();
+    group.visible = true;
+    const lateralOffset = event.pulseIndex % 2 === 0 ? 0.42 : -0.42;
+    const offsetX = (-dy / length) * lateralOffset;
+    const offsetY = (dx / length) * lateralOffset;
+    group.position.set(
+      (event.source.x + event.x) / 2 + offsetX,
+      (event.source.y + event.y) / 2 + offsetY,
+      4.2,
+    );
     group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
-    group.userData.materials = materials;
-    this.scene.add(group);
-    this.effects.push({ type: 'flagshipStrike', object: group, life: 1.16, maxLife: 1.16 });
-    this.spawnImpact(event.source.x, event.source.y, COLORS.command, 2.7);
-    this.spawnImpact(event.x, event.y, COLORS.friendly, 4.4);
+    group.userData.length = length;
+    group.userData.trailLength = Math.min(16, length * 0.24);
+    group.userData.wake.scale.set(1.8, length, 1);
+    group.userData.tracer.scale.set(1.05, group.userData.trailLength, 1);
+    group.userData.packet.scale.set(0.62, Math.min(4.6, length * 0.09), 1);
+    group.userData.tracer.position.y = -length / 2;
+    group.userData.packet.position.y = -length / 2;
+    group.userData.materials[0].opacity = 0.07;
+    group.userData.materials[1].opacity = 0.72;
+    group.userData.materials[2].opacity = 1;
+    this.effects.push({ type: 'gunPulse', object: group, life: 0.26, maxLife: 0.26 });
+    const command = [...this.entityMeshes.values()].find((mesh) => mesh.userData.entity?.role === 'command');
+    if (command?.userData.turret) command.userData.turret.userData.recoil = 1;
+    this.spawnImpact(event.source.x, event.source.y, COLORS.command, 0.5);
+    if (event.hitId) this.spawnImpact(event.x, event.y, COLORS.friendly, 0.85);
   }
 
   spawnFormationTrails(paths) {
@@ -619,15 +682,20 @@ export class GameRenderer {
         } else {
           remaining.push(effect);
         }
-      } else if (effect.type === 'flagshipStrike') {
+      } else if (effect.type === 'gunPulse') {
         effect.life -= dt;
-        const ratio = Math.max(0, Math.min(1, effect.life / 0.28));
-        effect.object.userData.materials[0].opacity = ratio * 0.34;
-        effect.object.userData.materials[1].opacity = ratio * 0.88;
+        const ratio = Math.max(0, effect.life / effect.maxLife);
+        const progress = 1 - ratio;
+        effect.object.userData.materials[0].opacity = ratio * 0.07;
+        effect.object.userData.materials[1].opacity = ratio * 0.76;
         effect.object.userData.materials[2].opacity = ratio;
-        effect.object.scale.x = 1 + (1 - ratio) * 0.45;
+        const packetY = -effect.object.userData.length / 2
+          + effect.object.userData.length * Math.min(1, progress * 1.7);
+        effect.object.userData.packet.position.y = packetY;
+        effect.object.userData.tracer.position.y = packetY - effect.object.userData.trailLength * 0.32;
+        effect.object.scale.x = 1 + progress * 0.28;
         if (effect.life <= 0) {
-          this.disposeTransientEffect(effect.object);
+          this.gunPulsePool.release(effect.object);
         } else {
           remaining.push(effect);
         }
@@ -698,13 +766,19 @@ export class GameRenderer {
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
     const aspect = width / height;
+    const viewHeight = 154;
+    const viewWidth = viewHeight * aspect;
+    const verticalCenter = 0;
+    const halfWidth = Math.max(28, Math.min(104, viewWidth / 2 - 3));
     const compactLandscape = height <= 600 && aspect > 1.4;
-    const narrowPortrait = aspect < 0.72;
-    const baseHeight = compactLandscape ? 194 : narrowPortrait ? 190 : 166;
-    const baseWidth = narrowPortrait ? 88 : 106;
-    const viewWidth = Math.max(baseWidth, baseHeight * aspect);
-    const viewHeight = Math.max(baseHeight, baseWidth / aspect);
-    const verticalCenter = compactLandscape ? -18 : narrowPortrait ? -10 : 0;
+    this.combatBounds = {
+      ...ARENA,
+      minX: -halfWidth,
+      maxX: halfWidth,
+      width: halfWidth * 2,
+      halfWidth,
+      fleetOffsetY: compactLandscape ? 21 : 0,
+    };
     this.camera.left = -viewWidth / 2;
     this.camera.right = viewWidth / 2;
     this.camera.top = viewHeight / 2 + verticalCenter;
@@ -712,6 +786,17 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height, false);
+    if (this.defenseLine) {
+      const position = this.defenseLine.geometry.getAttribute('position');
+      position.setXYZ(0, -halfWidth, ARENA.defenseLineY, -0.4);
+      position.setXYZ(1, halfWidth, ARENA.defenseLineY, -0.4);
+      position.needsUpdate = true;
+    }
+    return { ...this.combatBounds };
+  }
+
+  getCombatBounds() {
+    return { ...this.combatBounds };
   }
 
   setScreenShakeEnabled(enabled) {
@@ -738,8 +823,8 @@ export class GameRenderer {
     for (const effect of this.effects) {
       if (effect.type === 'impact') {
         this.effectPool.release(effect.object);
-      } else if (effect.type === 'flagshipStrike') {
-        this.disposeTransientEffect(effect.object);
+      } else if (effect.type === 'gunPulse') {
+        this.gunPulsePool.release(effect.object);
       } else {
         this.scene.remove(effect.object);
         effect.object.geometry.dispose();

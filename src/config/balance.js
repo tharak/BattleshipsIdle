@@ -5,7 +5,7 @@ export const ARENA = Object.freeze({
   maxX: 48,
   minY: -73,
   maxY: 73,
-  commandY: -63,
+  commandY: -55,
   defenseLineY: -68,
 });
 
@@ -47,12 +47,12 @@ export const ENEMIES = Object.freeze({
   rewardGrowth: 1.09,
 });
 
-export const VOLLEY = Object.freeze({
-  cooldown: 5.8,
-  beamHalfWidth: 1.25,
-  precisionRadius: 1.15,
-  damage: 75,
-  precisionMultiplier: 1.55,
+export const FLAGSHIP_GUN = Object.freeze({
+  firingDuration: 2.4,
+  fullRecharge: 5.8,
+  pulseInterval: 0.12,
+  damagePerSecond: 90,
+  shotHalfWidth: 0.78,
 });
 
 export const WAVES = Object.freeze({
@@ -97,8 +97,8 @@ export const FORMATIONS = Object.freeze({
     fireRate: 1,
     range: 1.12,
     incomingDamage: 1,
-    volleyDamage: 1,
-    strikeWidth: 1,
+    gunDamage: 1,
+    gunWidth: 1,
   }),
   wedge: Object.freeze({
     id: 'wedge',
@@ -110,8 +110,8 @@ export const FORMATIONS = Object.freeze({
     fireRate: 1.04,
     range: 0.95,
     incomingDamage: 1.08,
-    volleyDamage: 1.08,
-    strikeWidth: 0.94,
+    gunDamage: 1.08,
+    gunWidth: 0.94,
   }),
   defensiveArc: Object.freeze({
     id: 'defensiveArc',
@@ -123,8 +123,8 @@ export const FORMATIONS = Object.freeze({
     fireRate: 0.92,
     range: 0.96,
     incomingDamage: 0.68,
-    volleyDamage: 0.9,
-    strikeWidth: 1.06,
+    gunDamage: 0.9,
+    gunWidth: 1.06,
   }),
   splitWings: Object.freeze({
     id: 'splitWings',
@@ -136,8 +136,8 @@ export const FORMATIONS = Object.freeze({
     fireRate: 1.02,
     range: 1.08,
     incomingDamage: 1.05,
-    volleyDamage: 1.02,
-    strikeWidth: 1.08,
+    gunDamage: 1.02,
+    gunWidth: 1.08,
     sideDamage: 1.48,
     centerDamage: 0.82,
   }),
@@ -145,14 +145,14 @@ export const FORMATIONS = Object.freeze({
     id: 'denseColumn',
     name: 'Dense column',
     shortName: 'Column',
-    description: 'Synchronized strike',
-    mechanic: '+42% flagship strike damage',
+    description: 'Synchronized cannon',
+    mechanic: '+42% flagship gun damage',
     autoDamage: 1.08,
     fireRate: 1.06,
     range: 0.9,
     incomingDamage: 1.28,
-    volleyDamage: 1.42,
-    strikeWidth: 0.76,
+    gunDamage: 1.42,
+    gunWidth: 0.76,
   }),
 });
 

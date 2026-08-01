@@ -118,7 +118,7 @@ export class HudController {
       this.elements.bossStatus.classList.toggle('is-exposed', exposed);
       this.elements.bossBarrierState.textContent = exposed
         ? `Hull exposed // ${boss.exposedRemaining.toFixed(1)}s`
-        : 'Barrier active // flagship strike required';
+        : 'Barrier active // flagship gun required';
     }
   }
 
@@ -131,14 +131,8 @@ export class HudController {
         this.showMessage(`Wave ${event.wave} // ${event.enemyCount} contacts`, 1.3);
       } else if (event.type === 'waveCleared') {
         this.showMessage(`Sector clear // +${event.reward} salvage`, 1.6);
-      } else if (event.type === 'volleyFired') {
+      } else if (event.type === 'flagshipGunStarted') {
         this.finishOnboarding();
-      } else if (event.type === 'volleyResolved') {
-        if (event.preciseHits > 0) {
-          this.showMessage(`Precision lock // ${event.preciseHits} critical`, 1.1);
-        } else if (event.hits === 0) {
-          this.showMessage('Flagship strike missed // solution lost', 0.9);
-        }
       } else if (event.type === 'formationChanged') {
         this.showMessage(`${event.formation.name} // ${event.formation.mechanic}`, 1.25);
       } else if (event.type === 'upgradePurchased') {
@@ -149,13 +143,13 @@ export class HudController {
       } else if (event.type === 'shopClosed') {
         this.elements.shopOverlay.hidden = true;
       } else if (event.type === 'bossWaveStarted') {
-        this.showMessage(`${event.name} // flagship strike required`, 2.2);
+        this.showMessage(`${event.name} // flagship gun required`, 2.2);
       } else if (event.type === 'bossExposed') {
         this.showMessage('Barrier collapsed // focus fire', 1.4);
       } else if (event.type === 'bossBarrierRestored') {
         this.showMessage('Barrier restored // flagship recharging', 1.2);
-      } else if (event.type === 'volleyReady') {
-        this.showMessage('Flagship weapon // ready', 1.1);
+      } else if (event.type === 'flagshipGunReady') {
+        this.showMessage('Flagship gun // ready', 1.1);
       } else if (event.type === 'gameOver') {
         this.showGameOver(event);
       }
@@ -204,7 +198,7 @@ export class HudController {
       button.className = 'upgrade-buy';
       button.type = 'button';
       button.disabled = !affordable;
-      button.textContent = upgrade.cost === null ? 'MAX' : `${upgrade.cost} ◇`;
+      button.textContent = upgrade.cost === null ? 'MAX' : `${upgrade.cost.toLocaleString()} ◇`;
       button.setAttribute('aria-label', upgrade.cost === null
         ? `${upgrade.name} is at maximum level`
         : `Upgrade ${upgrade.name} for ${upgrade.cost} salvage`);
@@ -233,12 +227,12 @@ export class HudController {
     if (this.onboardingComplete) return;
     window.clearTimeout(this.coachTimer);
     this.elements.coachmarkTitle.textContent = 'Auto-fire online';
-    this.elements.coachmarkDetail.textContent = 'Your ships engage targets in range without direct piloting.';
+    this.elements.coachmarkDetail.textContent = 'Escorts engage automatically. The flagship gun remains under your command.';
     this.elements.coachmark.hidden = false;
     this.coachTimer = window.setTimeout(() => {
       if (this.onboardingComplete) return;
       this.elements.coachmarkTitle.textContent = 'Your command matters';
-      this.elements.coachmarkDetail.textContent = 'Aim down an attack lane when charged. The beam stops on the first enemy hull.';
+      this.elements.coachmarkDetail.textContent = 'Hold and drag to rake the pulsed cannon across approaching targets.';
     }, 2800);
   }
 

@@ -28,4 +28,14 @@ describe('UpgradeSystem', () => {
     expect(system.getLevel('fleetSize')).toBe(0);
     expect(system.getLevel('shieldStrength')).toBe(2);
   });
+
+  it('keeps autonomous gunnery as a single expensive end-game unlock', () => {
+    const system = new UpgradeSystem();
+
+    expect(getUpgradeCost('automatedGunnery', 0)).toBe(250000);
+    expect(system.purchase('automatedGunnery', 249999)).toMatchObject({ purchased: false, reason: 'insufficient' });
+    expect(system.purchase('automatedGunnery', 250000)).toMatchObject({ purchased: true, currency: 0 });
+    expect(system.automatedGunnery).toBe(true);
+    expect(system.getCost('automatedGunnery')).toBeNull();
+  });
 });

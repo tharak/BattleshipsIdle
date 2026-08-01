@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ARENA, FLEET, VOLLEY, WAVES } from '../src/config/balance.js';
+import { ARENA, FLAGSHIP_GUN, FLEET, WAVES } from '../src/config/balance.js';
 import { GameSimulation } from '../src/combat/GameSimulation.js';
 
 function createSimulation() {
@@ -25,39 +25,39 @@ describe('GameSimulation', () => {
     expect(simulation.consumeEvents().map((event) => event.type)).toContain('waveStarted');
   });
 
-  it('automatically fires at approaching enemies', () => {
+  it('keeps escort auto-fire while removing the flagship automatic attack', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.consumeEvents();
     advance(simulation, 0.9);
 
     const events = simulation.consumeEvents();
-    expect(events.some((event) => event.type === 'projectileFired' && event.faction === 'friendly')).toBe(true);
+    const friendlyShots = events.filter((event) => event.type === 'projectileFired' && event.faction === 'friendly');
+    expect(friendlyShots.length).toBeGreaterThan(0);
+    expect(friendlyShots.every((event) => event.sourceRole !== 'command')).toBe(true);
     expect(simulation.getSnapshot().projectiles.length).toBeGreaterThan(0);
   });
 
-  it('rewards a precise flagship strike and enforces its cooldown', () => {
+  it('starts the flagship gun manually and enforces proportional cooling after release', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.consumeEvents();
     const target = simulation.getSnapshot().enemies[0];
 
-    const first = simulation.fireVolley(target.x, target.y);
-    const firedEvent = simulation.consumeEvents().find((event) => event.type === 'volleyFired');
-    const salvageAfterHit = simulation.getSnapshot().progression.salvage;
-    const second = simulation.fireVolley(target.x, target.y);
+    const first = simulation.beginFlagshipFire(target.x, target.y);
+    const firedEvent = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    simulation.endFlagshipFire();
+    const second = simulation.beginFlagshipFire(target.x, target.y);
 
-    expect(first.fired).toBe(true);
-    expect(first.preciseHits).toBeGreaterThanOrEqual(1);
-    expect(first.hitId).toBe(target.id);
+    expect(first.firing).toBe(true);
+    expect(firedEvent.hitId).toBe(target.id);
     expect(firedEvent.source).toMatchObject({ x: simulation.getCommandShip().x, y: simulation.getCommandShip().y });
-    expect(firedEvent.sources).toBeUndefined();
-    expect(salvageAfterHit).toBeGreaterThan(0);
-    expect(second).toMatchObject({ fired: false, reason: 'cooldown' });
-    expect(simulation.getSnapshot().volleyRemaining).toBeCloseTo(VOLLEY.cooldown);
+    expect(second).toMatchObject({ firing: false, reason: 'cooldown' });
+    expect(simulation.getSnapshot().flagshipGun.rechargeRemaining).toBeGreaterThan(0);
+    expect(simulation.getSnapshot().flagshipGun.rechargeRemaining).toBeLessThan(FLAGSHIP_GUN.fullRecharge);
   });
 
-  it('stops the flagship beam at the first enemy hull in its path', () => {
+  it('stops each flagship pulse at the first enemy hull in its path', () => {
     const simulation = createSimulation();
     simulation.startRun();
     const [near, far, ...others] = simulation.enemies;
@@ -65,24 +65,27 @@ describe('GameSimulation', () => {
     Object.assign(far, { x: 0, y: 28, health: 1000, maxHealth: 1000, scale: 1 });
     others.forEach((enemy) => { enemy.x = 40; });
 
-    const result = simulation.fireVolley(0, ARENA.maxY);
+    simulation.consumeEvents();
+    simulation.beginFlagshipFire(0, ARENA.maxY);
+    const result = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
 
     expect(result.hitId).toBe(near.id);
     expect(near.health).toBeLessThan(1000);
     expect(far.health).toBe(1000);
-    expect(result.endpoint.y).toBeLessThan(near.y);
+    expect(result.y).toBeLessThan(near.y);
   });
 
-  it('extends a missed flagship beam to the battlefield boundary', () => {
+  it('extends a missed flagship pulse to the battlefield boundary', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.enemies.forEach((enemy) => { enemy.x = 40; });
 
-    const result = simulation.fireVolley(0, ARENA.maxY);
+    simulation.consumeEvents();
+    simulation.beginFlagshipFire(0, ARENA.maxY);
+    const result = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
 
-    expect(result.hits).toBe(0);
     expect(result.hitId).toBeNull();
-    expect(result.endpoint).toMatchObject({ x: 0, y: ARENA.maxY });
+    expect(result).toMatchObject({ x: 0, y: ARENA.maxY });
   });
 
   it('clears a defeated wave, grants a wave reward, and starts the next wave', () => {
@@ -95,7 +98,7 @@ describe('GameSimulation', () => {
     simulation.resolveWaveIfNeeded();
 
     expect(simulation.getSnapshot().waveIntermission).toBe(WAVES.intermission);
-    expect(simulation.fireVolley(0, 0)).toMatchObject({ fired: false, reason: 'inactive' });
+    expect(simulation.beginFlagshipFire(0, 0)).toMatchObject({ firing: false, reason: 'inactive' });
     expect(simulation.getSnapshot().progression.salvage).toBeGreaterThan(0);
 
     advance(simulation, WAVES.intermission + 0.1);
@@ -130,17 +133,50 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().elapsed).toBe(before);
   });
 
-  it('recovers volley charge and allows a later order', () => {
+  it('recovers flagship energy and allows a later firing cycle', () => {
     const simulation = createSimulation();
     simulation.startRun();
     const target = simulation.enemies[0];
 
-    expect(simulation.fireVolley(target.x, target.y).fired).toBe(true);
-    advance(simulation, VOLLEY.cooldown + 0.1);
+    expect(simulation.beginFlagshipFire(target.x, target.y).firing).toBe(true);
+    simulation.endFlagshipFire();
+    advance(simulation, FLAGSHIP_GUN.fullRecharge + 0.1);
 
-    expect(simulation.getSnapshot().volleyRemaining).toBe(0);
-    expect(simulation.consumeEvents().some((event) => event.type === 'volleyReady')).toBe(true);
-    expect(simulation.fireVolley(0, 0).fired).toBe(true);
+    expect(simulation.getSnapshot().flagshipGun.energyRatio).toBe(1);
+    expect(simulation.consumeEvents().some((event) => event.type === 'flagshipGunReady')).toBe(true);
+    expect(simulation.beginFlagshipFire(0, 0).firing).toBe(true);
+  });
+
+  it('tracks a dragged aim direction throughout sustained fire', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [left, right, ...others] = simulation.enemies;
+    Object.assign(left, { x: -18, originX: -18, y: 0, speed: 0, drift: 0, health: 1000, maxHealth: 1000, scale: 1 });
+    Object.assign(right, { x: 18, originX: 18, y: 0, speed: 0, drift: 0, health: 1000, maxHealth: 1000, scale: 1 });
+    others.forEach((enemy) => { Object.assign(enemy, { x: 40, originX: 40, speed: 0, drift: 0 }); });
+
+    simulation.beginFlagshipFire(left.x, left.y);
+    const leftAfterFirstPulse = left.health;
+    simulation.aimFlagshipFire(right.x, right.y);
+    advance(simulation, FLAGSHIP_GUN.pulseInterval + 0.02);
+
+    expect(leftAfterFirstPulse).toBeLessThan(1000);
+    expect(right.health).toBeLessThan(1000);
+    expect(simulation.getSnapshot().flagshipGun.firing).toBe(true);
+  });
+
+  it('automatically ends a depleted firing cycle and requires a full recharge', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    simulation.beginFlagshipFire(0, ARENA.maxY);
+
+    advance(simulation, FLAGSHIP_GUN.firingDuration + 0.1);
+    const depleted = simulation.getSnapshot().flagshipGun;
+
+    expect(depleted.firing).toBe(false);
+    expect(depleted.energyRatio).toBeLessThan(0.05);
+    expect(depleted.recharging).toBe(true);
+    expect(simulation.beginFlagshipFire(0, ARENA.maxY)).toMatchObject({ firing: false, reason: 'cooldown' });
   });
 
   it('applies breach pressure to the command ship', () => {
@@ -161,7 +197,7 @@ describe('GameSimulation', () => {
     const simulation = createSimulation();
     simulation.startRun();
     const target = simulation.enemies[0];
-    simulation.fireVolley(target.x, target.y);
+    simulation.beginFlagshipFire(target.x, target.y);
     advance(simulation, 0.8);
     simulation.progression.recordEnemyDestroyed(50);
     const persistentCurrency = simulation.getSnapshot().progression.currency;
@@ -172,7 +208,7 @@ describe('GameSimulation', () => {
     expect(snapshot.status).toBe('running');
     expect(snapshot.wave).toBe(1);
     expect(snapshot.commandHealth).toBe(FLEET.commandHealth);
-    expect(snapshot.volleyRemaining).toBe(0);
+    expect(snapshot.flagshipGun.energyRatio).toBe(1);
     expect(snapshot.projectiles).toHaveLength(0);
     expect(snapshot.progression.salvage).toBe(persistentCurrency);
     expect(snapshot.progression.runSalvage).toBe(0);
@@ -204,6 +240,17 @@ describe('GameSimulation', () => {
     expect(simulation.changeFormation('denseColumn')).toMatchObject({ changed: false, reason: 'cooldown' });
   });
 
+  it('adapts formation width and enemy bounds to the visible battlefield', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+
+    simulation.setArenaBounds({ halfWidth: 30 });
+
+    expect(simulation.getSnapshot().arena).toMatchObject({ minX: -30, maxX: 30 });
+    expect(simulation.friendlies.every((ship) => Math.abs(ship.targetX) <= 30)).toBe(true);
+    expect(simulation.enemies.every((enemy) => Math.abs(enemy.x) <= 27)).toBe(true);
+  });
+
   it('applies defensive arc mitigation to incoming damage', () => {
     const simulation = createSimulation();
     simulation.changeFormation('defensiveArc');
@@ -215,7 +262,7 @@ describe('GameSimulation', () => {
     expect(command.maxHealth - command.health).toBeCloseTo(68);
   });
 
-  it('makes dense-column flagship strikes stronger', () => {
+  it('makes dense-column flagship gun pulses stronger', () => {
     const line = createSimulation();
     const column = createSimulation();
     line.startRun();
@@ -226,13 +273,37 @@ describe('GameSimulation', () => {
     column.enemies[0].health = 1000;
     column.enemies[0].maxHealth = 1000;
 
-    const lineResult = line.fireVolley(line.enemies[0].x, line.enemies[0].y);
-    const columnResult = column.fireVolley(column.enemies[0].x, column.enemies[0].y);
+    const lineResult = line.beginFlagshipFire(line.enemies[0].x, line.enemies[0].y);
+    const columnResult = column.beginFlagshipFire(column.enemies[0].x, column.enemies[0].y);
     const lineDamage = 1000 - line.enemies[0].health;
     const columnDamage = 1000 - column.enemies[0].health;
 
     expect(columnDamage).toBeGreaterThan(lineDamage);
-    expect(columnResult.hits).toBe(lineResult.hits);
+    expect(columnResult.firing).toBe(lineResult.firing);
+  });
+
+  it('automates priority targeting while preserving manual override', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { upgrades: { automatedGunnery: 1 } },
+    });
+    simulation.startRun();
+    simulation.enemies = [];
+    simulation.wave = 4;
+    simulation.beginNextWave();
+    const boss = simulation.enemies.find((enemy) => enemy.boss);
+    const escort = simulation.enemies.find((enemy) => !enemy.boss);
+
+    simulation.consumeEvents();
+    simulation.update(1 / 60);
+    const automaticPulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    expect(simulation.getSnapshot().flagshipGun).toMatchObject({ firing: true, manualControl: false, automated: true });
+    expect(automaticPulse.hitId).toBe(boss.id);
+
+    expect(simulation.beginFlagshipFire(escort.x, escort.y)).toMatchObject({ firing: true, override: true });
+    expect(simulation.getSnapshot().flagshipGun.manualControl).toBe(true);
+    simulation.endFlagshipFire();
+    expect(simulation.getSnapshot().flagshipGun).toMatchObject({ firing: true, manualControl: false });
   });
 
   it('applies purchased upgrades immediately and keeps currency persistent', () => {
@@ -303,7 +374,7 @@ describe('GameSimulation', () => {
     expect(simulation.consumeEvents().some((event) => event.type === 'bossWaveStarted')).toBe(true);
   });
 
-  it('makes automatic fire weak against a boss until a flagship strike exposes its hull', () => {
+  it('makes automatic fire weak against a boss until the flagship gun exposes its hull', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.enemies = [];
@@ -315,10 +386,10 @@ describe('GameSimulation', () => {
     simulation.damageEntity(boss, 100, 'projectile');
     expect(before - boss.health).toBeCloseTo(16);
 
-    const result = simulation.fireVolley(boss.x, boss.y);
-    expect(result.fired).toBe(true);
+    const result = simulation.beginFlagshipFire(boss.x, boss.y);
+    expect(result.firing).toBe(true);
     expect(boss.exposedRemaining).toBeGreaterThan(0);
-    expect(before - boss.health).toBeGreaterThan(100);
+    expect(before - boss.health).toBeGreaterThan(16);
   });
 
   it('applies artillery area damage to clustered ships', () => {

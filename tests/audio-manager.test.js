@@ -13,7 +13,7 @@ describe('AudioManager', () => {
     const audio = new AudioManager();
     audio.tone = vi.fn();
 
-    audio.handleEvents([{ type: 'volleyReady' }]);
+    audio.handleEvents([{ type: 'flagshipGunReady' }]);
 
     expect(audio.tone).toHaveBeenCalledTimes(1);
     vi.runAllTimers();
@@ -70,6 +70,25 @@ describe('AudioManager', () => {
 
     expect(audio.tone).toHaveBeenCalledTimes(2);
     expect(audio.tone.mock.calls.map(([tone]) => tone.frequency)).toEqual([820, 190]);
+  });
+
+  it('layers distinct start, pulse, overheat, and ready cues for the flagship gun', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { setTimeout });
+    const audio = new AudioManager({ now: () => 1_000 });
+    audio.tone = vi.fn();
+    audio.noise = vi.fn();
+
+    audio.handleEvents([
+      { type: 'flagshipGunStarted' },
+      { type: 'flagshipGunPulse', pulseIndex: 1, hitId: 'enemy-1' },
+      { type: 'flagshipGunStopped', reason: 'depleted' },
+      { type: 'flagshipGunReady' },
+    ]);
+    vi.runAllTimers();
+
+    expect(audio.tone.mock.calls.length).toBeGreaterThanOrEqual(7);
+    expect(audio.noise).toHaveBeenCalledTimes(2);
   });
 
   it('gives every enabled interface button a quiet pointer cue', () => {
