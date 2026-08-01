@@ -3,12 +3,39 @@ import { GameSimulation } from './combat/GameSimulation.js';
 import { TargetingInput } from './input/TargetingInput.js';
 import { GameRenderer } from './rendering/GameRenderer.js';
 import { HudController } from './ui/HudController.js';
+import { PersistenceStore } from './persistence/PersistenceStore.js';
 
 const FIXED_STEP = 1 / 60;
 const MAX_FRAME_CATCHUP = 0.2;
 
 const battlefield = document.querySelector('#battlefield');
-const simulation = new GameSimulation();
+const persistence = new PersistenceStore(window.localStorage);
+const loadedSave = persistence.load();
+let persistentState = loadedSave.state;
+let simulation;
+let saveTimer = 0;
+
+function persistNow() {
+  if (!simulation) return;
+  persistentState = persistence.save({
+    ...persistentState,
+    ...simulation.getPersistentState(),
+  });
+}
+
+function schedulePersist() {
+  if (saveTimer) return;
+  saveTimer = window.setTimeout(() => {
+    saveTimer = 0;
+    persistNow();
+  }, 900);
+}
+
+simulation = new GameSimulation({
+  progressionState: persistentState,
+  selectedFormation: persistentState.selectedFormation,
+  onStateChange: schedulePersist,
+});
 const gameRenderer = new GameRenderer(battlefield);
 
 function consumeAndDispatchEvents() {
@@ -38,6 +65,23 @@ const hud = new HudController({
     consumeAndDispatchEvents();
     return result;
   },
+  onShopOpen: () => {
+    const opened = simulation.openShop();
+    consumeAndDispatchEvents();
+    return opened;
+  },
+  onShopClose: () => {
+    const closed = simulation.closeShop();
+    consumeAndDispatchEvents();
+    return closed;
+  },
+  onUpgrade: (upgradeId) => {
+    const result = simulation.purchaseUpgrade(upgradeId);
+    consumeAndDispatchEvents();
+    persistNow();
+    return { ...result, snapshot: simulation.getSnapshot() };
+  },
+  offlineSummary: loadedSave.offline,
 });
 
 const targetingInput = new TargetingInput({
@@ -78,6 +122,7 @@ function frame(now) {
 
 function handleVisibilityChange() {
   const hidden = document.hidden;
+  if (hidden) persistNow();
   simulation.setSuspended(hidden);
   if (!hidden) {
     previousTime = performance.now();
@@ -86,6 +131,7 @@ function handleVisibilityChange() {
 }
 
 window.addEventListener('resize', () => gameRenderer.resize(), { passive: true });
+window.addEventListener('pagehide', persistNow);
 document.addEventListener('visibilitychange', handleVisibilityChange);
 
 // A deliberately small read-only seam for browser smoke tests and future diagnostics.

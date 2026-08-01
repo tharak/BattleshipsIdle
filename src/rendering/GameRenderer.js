@@ -94,6 +94,14 @@ export class GameRenderer {
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
+      shieldMaterial: new THREE.MeshBasicMaterial({
+        color: 0x72a7ff,
+        transparent: true,
+        opacity: 0.46,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
       darkMaterial: createMaterial(0x0a1629, { emissiveIntensity: 0.08 }),
       healthMaterial: new THREE.MeshBasicMaterial({ color: COLORS.friendly }),
       enemyHealthMaterial: new THREE.MeshBasicMaterial({ color: COLORS.enemy }),
@@ -301,6 +309,15 @@ export class GameRenderer {
     halo.scale.setScalar(command ? 1.45 : 1);
     group.add(halo);
 
+    let shieldRing = null;
+    if (friendly) {
+      shieldRing = new THREE.Mesh(this.shared.haloGeometry, this.shared.shieldMaterial);
+      shieldRing.position.z = 0.15;
+      shieldRing.scale.setScalar(command ? 1.75 : 1.28);
+      shieldRing.visible = entity.maxShield > 0;
+      group.add(shieldRing);
+    }
+
     const healthGroup = new THREE.Group();
     const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.34), this.shared.healthBackMaterial);
     const healthFill = new THREE.Mesh(
@@ -317,6 +334,7 @@ export class GameRenderer {
     group.userData.baseScale = scale;
     group.userData.health = healthGroup;
     group.userData.halo = halo;
+    group.userData.shieldRing = shieldRing;
     group.userData.entity = entity;
     this.scene.add(group);
     return group;
@@ -359,6 +377,14 @@ export class GameRenderer {
       healthFill.position.x = -2.1 * (1 - healthRatio);
       group.userData.health.visible = healthRatio < 0.995;
       group.userData.halo.rotation.z += 0.012;
+      if (group.userData.shieldRing) {
+        const shieldRatio = entity.maxShield > 0 ? entity.shield / entity.maxShield : 0;
+        group.userData.shieldRing.visible = shieldRatio > 0;
+        group.userData.shieldRing.rotation.z -= 0.018;
+        group.userData.shieldRing.scale.setScalar(
+          (entity.role === 'command' ? 1.75 : 1.28) * (0.9 + shieldRatio * 0.1),
+        );
+      }
       const pulse = 1 + Math.sin(this.clockTime * 3 + (entity.slot ?? 0)) * 0.025;
       group.scale.setScalar(group.userData.baseScale * pulse);
     }
@@ -414,6 +440,10 @@ export class GameRenderer {
         this.shake = Math.max(this.shake, 2.2);
       } else if (event.type === 'formationChanged') {
         this.spawnFormationTrails(event.paths);
+      } else if (event.type === 'shieldImpact') {
+        this.spawnImpact(event.x, event.y, 0x72a7ff, 1.35);
+      } else if (event.type === 'friendlyJoined') {
+        this.spawnImpact(event.x, event.y, COLORS.command, 1.8);
       }
     }
   }

@@ -1,7 +1,16 @@
 const VOLLEY_CIRCUMFERENCE = 2 * Math.PI * 18;
 
 export class HudController {
-  constructor({ onStart, onRestart, onPause, onFormation }) {
+  constructor({
+    onStart,
+    onRestart,
+    onPause,
+    onFormation,
+    onShopOpen,
+    onShopClose,
+    onUpgrade,
+    offlineSummary,
+  }) {
     this.elements = {
       wave: document.querySelector('#wave-value'),
       health: document.querySelector('#health-value'),
@@ -23,12 +32,29 @@ export class HudController {
       formationLabel: document.querySelector('#formation-label'),
       formationMenu: document.querySelector('#formation-menu'),
       formationOptions: [...document.querySelectorAll('[data-formation]')],
+      shieldMeter: document.querySelector('#shield-meter'),
+      shieldFill: document.querySelector('#shield-fill'),
+      shopButton: document.querySelector('#shop-button'),
+      startShopButton: document.querySelector('#start-shop-button'),
+      gameoverShopButton: document.querySelector('#gameover-shop-button'),
+      shopOverlay: document.querySelector('#shop-overlay'),
+      shopCloseButton: document.querySelector('#shop-close-button'),
+      shopCurrency: document.querySelector('#shop-currency'),
+      upgradeList: document.querySelector('#upgrade-list'),
+      offlineOverlay: document.querySelector('#offline-overlay'),
+      offlineEarned: document.querySelector('#offline-earned'),
+      offlineDetail: document.querySelector('#offline-detail'),
+      offlineCloseButton: document.querySelector('#offline-close-button'),
     };
 
     this.messageTimer = 0;
     this.elements.startButton.addEventListener('click', onStart);
     this.elements.restartButton.addEventListener('click', onRestart);
     this.elements.pauseButton.addEventListener('click', onPause);
+    this.elements.shopButton.addEventListener('click', onShopOpen);
+    this.elements.startShopButton.addEventListener('click', onShopOpen);
+    this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
+    this.elements.shopCloseButton.addEventListener('click', onShopClose);
     this.elements.formationToggle.addEventListener('click', () => this.toggleFormationMenu());
     for (const option of this.elements.formationOptions) {
       option.addEventListener('click', () => {
@@ -36,6 +62,9 @@ export class HudController {
         if (result?.changed) this.closeFormationMenu();
       });
     }
+    this.onUpgrade = onUpgrade;
+    this.lastUpgradeSignature = '';
+    this.showOfflineSummary(offlineSummary);
     this.setReadyState();
   }
 
@@ -68,6 +97,12 @@ export class HudController {
     this.elements.healthFill.style.transform = `scaleX(${healthRatio})`;
     this.elements.healthFill.style.backgroundColor = healthRatio < 0.3 ? 'var(--danger)' : 'var(--cyan)';
     this.elements.currency.textContent = snapshot.progression.salvage.toLocaleString();
+    this.elements.shopCurrency.textContent = snapshot.progression.currency.toLocaleString();
+    const shieldRatio = snapshot.commandMaxShield > 0
+      ? Math.max(0, snapshot.commandShield / snapshot.commandMaxShield)
+      : 0;
+    this.elements.shieldMeter.hidden = snapshot.commandMaxShield <= 0;
+    this.elements.shieldFill.style.transform = `scaleX(${shieldRatio})`;
     this.elements.volleyRing.style.strokeDashoffset = String(VOLLEY_CIRCUMFERENCE * (1 - charge));
     this.elements.formationLabel.textContent = snapshot.formation.current.name;
     this.elements.formationToggle.setAttribute(
@@ -79,6 +114,8 @@ export class HudController {
       option.setAttribute('aria-pressed', String(option.dataset.formation === snapshot.formation.currentId));
       option.disabled = snapshot.formation.cooldownRemaining > 0 && snapshot.status !== 'ready';
     }
+    this.lastSnapshot = snapshot;
+    if (!this.elements.shopOverlay.hidden) this.renderUpgrades(snapshot);
 
     const ready = charge >= 0.999 && snapshot.status === 'running' && snapshot.waveIntermission <= 0;
     this.elements.volleyPanel.classList.toggle('is-ready', ready);
@@ -89,6 +126,8 @@ export class HudController {
       this.elements.volleyLabel.textContent = 'Tactical hold';
     } else if (snapshot.status === 'gameOver') {
       this.elements.volleyLabel.textContent = 'Command unavailable';
+    } else if (snapshot.status === 'shopping') {
+      this.elements.volleyLabel.textContent = 'Foundry link open';
     } else if (snapshot.waveIntermission > 0) {
       this.elements.volleyLabel.textContent = 'Fleet regrouping';
     } else if (ready) {
@@ -117,6 +156,13 @@ export class HudController {
         }
       } else if (event.type === 'formationChanged') {
         this.showMessage(`${event.formation.name} // ${event.formation.mechanic}`, 1.25);
+      } else if (event.type === 'upgradePurchased') {
+        this.showMessage(`${event.upgrade.name} // level ${event.level}`, 1.1);
+      } else if (event.type === 'shopOpened') {
+        this.elements.shopOverlay.hidden = false;
+        if (this.lastSnapshot) this.renderUpgrades(this.lastSnapshot, true);
+      } else if (event.type === 'shopClosed') {
+        this.elements.shopOverlay.hidden = true;
       } else if (event.type === 'paused') {
         this.setPaused(true);
       } else if (event.type === 'resumed') {
@@ -150,7 +196,7 @@ export class HudController {
     this.elements.pauseButton.disabled = true;
     this.elements.pauseOverlay.hidden = true;
     this.elements.runSummary.textContent =
-      `Your fleet reached wave ${wave}, destroyed ${progression.destroyedEnemies} contacts, and recovered ${progression.salvage} salvage.`;
+      `Your fleet reached wave ${wave}, destroyed ${progression.destroyedEnemies} contacts, and recovered ${progression.runSalvage} salvage.`;
     this.elements.gameoverOverlay.hidden = false;
     requestAnimationFrame(() => this.elements.gameoverOverlay.classList.add('overlay--visible'));
   }
@@ -164,5 +210,52 @@ export class HudController {
   closeFormationMenu() {
     this.elements.formationMenu.hidden = true;
     this.elements.formationToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  renderUpgrades(snapshot, force = false) {
+    const signature = `${snapshot.progression.currency}:${snapshot.progression.upgrades.map(({ level }) => level).join(',')}`;
+    if (!force && signature === this.lastUpgradeSignature) return;
+    this.lastUpgradeSignature = signature;
+    this.elements.shopCurrency.textContent = snapshot.progression.currency.toLocaleString();
+    this.elements.upgradeList.replaceChildren();
+
+    for (const upgrade of snapshot.progression.upgrades) {
+      const card = document.createElement('article');
+      card.className = 'upgrade-card';
+      const affordable = upgrade.cost !== null && snapshot.progression.currency >= upgrade.cost;
+      card.innerHTML = `
+        <span class="upgrade-card__icon" aria-hidden="true">${upgrade.icon}</span>
+        <div>
+          <h3>${upgrade.name}<span class="upgrade-card__level">LV ${upgrade.level}/${upgrade.maxLevel}</span></h3>
+          <p>${upgrade.currentEffect}<br><span>${upgrade.nextEffect}</span></p>
+        </div>
+      `;
+      const button = document.createElement('button');
+      button.className = 'upgrade-buy';
+      button.type = 'button';
+      button.disabled = !affordable;
+      button.textContent = upgrade.cost === null ? 'MAX' : `${upgrade.cost} ◇`;
+      button.setAttribute('aria-label', upgrade.cost === null
+        ? `${upgrade.name} is at maximum level`
+        : `Upgrade ${upgrade.name} for ${upgrade.cost} salvage`);
+      button.addEventListener('click', () => {
+        const result = this.onUpgrade(upgrade.id);
+        if (result?.snapshot) this.renderUpgrades(result.snapshot, true);
+      });
+      card.appendChild(button);
+      this.elements.upgradeList.appendChild(card);
+    }
+  }
+
+  showOfflineSummary(summary) {
+    if (!summary || summary.earned <= 0) return;
+    const hours = summary.creditedSeconds / 3600;
+    this.elements.offlineEarned.textContent = `+${summary.earned.toLocaleString()} salvage`;
+    this.elements.offlineDetail.textContent =
+      `${hours < 1 ? Math.max(1, Math.round(hours * 60)) + ' minutes' : hours.toFixed(1) + ' hours'} credited${summary.capped ? ' (offline cap reached)' : ''}. Active command remains the fastest path to progression.`;
+    this.elements.offlineOverlay.hidden = false;
+    this.elements.offlineCloseButton.addEventListener('click', () => {
+      this.elements.offlineOverlay.hidden = true;
+    }, { once: true });
   }
 }

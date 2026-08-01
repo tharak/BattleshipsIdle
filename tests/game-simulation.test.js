@@ -131,6 +131,7 @@ describe('GameSimulation', () => {
     simulation.fireVolley(target.x, target.y);
     advance(simulation, 0.8);
     simulation.progression.recordEnemyDestroyed(50);
+    const persistentCurrency = simulation.getSnapshot().progression.currency;
 
     simulation.restartRun();
     const snapshot = simulation.getSnapshot();
@@ -140,7 +141,8 @@ describe('GameSimulation', () => {
     expect(snapshot.commandHealth).toBe(FLEET.commandHealth);
     expect(snapshot.volleyRemaining).toBe(0);
     expect(snapshot.projectiles).toHaveLength(0);
-    expect(snapshot.progression.salvage).toBe(0);
+    expect(snapshot.progression.salvage).toBe(persistentCurrency);
+    expect(snapshot.progression.runSalvage).toBe(0);
   });
 
   it('resolves projectile hits when updated at the runtime fixed step', () => {
@@ -198,5 +200,56 @@ describe('GameSimulation', () => {
 
     expect(columnDamage).toBeGreaterThan(lineDamage);
     expect(columnResult.hits).toBeLessThanOrEqual(lineResult.hits);
+  });
+
+  it('applies purchased upgrades immediately and keeps currency persistent', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { currency: 1000 },
+    });
+    simulation.startRun();
+    const damageBefore = simulation.friendlies[0].damage;
+
+    const damage = simulation.purchaseUpgrade('shipDamage');
+    const shield = simulation.purchaseUpgrade('shieldStrength');
+    const size = simulation.purchaseUpgrade('fleetSize');
+
+    expect(damage.purchased).toBe(true);
+    expect(shield.purchased).toBe(true);
+    expect(size.purchased).toBe(true);
+    expect(simulation.friendlies[0].damage).toBeGreaterThan(damageBefore);
+    expect(simulation.friendlies[0].maxShield).toBeGreaterThan(0);
+    expect(simulation.friendlies).toHaveLength(8);
+    expect(simulation.getPersistentState().currency).toBeLessThan(1000);
+  });
+
+  it('uses shields before hull integrity', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { currency: 500, upgrades: { shieldStrength: 1 } },
+    });
+    simulation.startRun();
+    const command = simulation.getCommandShip();
+    const hullBefore = command.health;
+    const shieldBefore = command.shield;
+
+    simulation.damageEntity(command, 20, 'test');
+
+    expect(command.shield).toBeLessThan(shieldBefore);
+    expect(command.health).toBe(hullBefore);
+    expect(simulation.consumeEvents().some((event) => event.type === 'shieldImpact')).toBe(true);
+  });
+
+  it('pauses combat while the upgrade shop is open', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    advance(simulation, 0.5);
+    const elapsed = simulation.getSnapshot().elapsed;
+
+    expect(simulation.openShop()).toBe(true);
+    advance(simulation, 1);
+    expect(simulation.getSnapshot().elapsed).toBe(elapsed);
+    expect(simulation.closeShop()).toBe(true);
+    expect(simulation.getSnapshot().status).toBe('running');
   });
 });

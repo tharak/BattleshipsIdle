@@ -31,10 +31,16 @@ function normalizedVelocity(from, to, speed) {
 }
 
 export class GameSimulation {
-  constructor({ random = Math.random } = {}) {
+  constructor({
+    random = Math.random,
+    progressionState = {},
+    selectedFormation = 'line',
+    onStateChange = () => {},
+  } = {}) {
     this.random = random;
-    this.progression = new RunProgression();
-    this.formationSystem = new FormationSystem('line');
+    this.onStateChange = onStateChange;
+    this.progression = new RunProgression({ state: progressionState, onChange: onStateChange });
+    this.formationSystem = new FormationSystem(selectedFormation);
     this.nextId = 1;
     this.events = [];
     this.resetToReady();
@@ -54,7 +60,7 @@ export class GameSimulation {
     this.enemies = [];
     this.projectiles = [];
     this.events = [];
-    this.progression.reset();
+    this.progression.resetRun();
   }
 
   startRun() {
@@ -69,26 +75,37 @@ export class GameSimulation {
   }
 
   createFleet() {
-    const fleet = FLEET.positions.map((position, index) => {
-      const isCommand = position.role === 'command';
-      const maxHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
-      return {
-        id: `friendly-${this.nextId++}`,
-        faction: 'friendly',
-        role: position.role,
-        slot: index,
-        x: position.x,
-        y: position.y,
-        health: maxHealth,
-        maxHealth,
-        damage: isCommand ? FLEET.commandDamage : FLEET.escortDamage,
-        fireInterval: isCommand ? FLEET.commandFireInterval : FLEET.escortFireInterval,
-        fireCooldown: this.random() * 0.5,
-        alive: true,
-      };
-    });
+    const count = this.progression.upgrades.fleetSize;
+    const commandIndex = Math.floor(count / 2);
+    const fleet = Array.from({ length: count }, (_, index) => (
+      this.createFriendly(index === commandIndex ? 'command' : 'escort', index)
+    ));
     this.formationSystem.applyInitialPositions(fleet);
     return fleet;
+  }
+
+  createFriendly(role, slot) {
+    const isCommand = role === 'command';
+    const baseHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
+    const maxHealth = Math.round(baseHealth * this.progression.upgrades.durabilityMultiplier);
+    const maxShield = this.progression.upgrades.getShieldFor(role);
+    return {
+      id: `friendly-${this.nextId++}`,
+      faction: 'friendly',
+      role,
+      slot,
+      x: 0,
+      y: ARENA.commandY,
+      health: maxHealth,
+      maxHealth,
+      shield: maxShield,
+      maxShield,
+      damage: (isCommand ? FLEET.commandDamage : FLEET.escortDamage)
+        * this.progression.upgrades.shipDamageMultiplier,
+      fireInterval: isCommand ? FLEET.commandFireInterval : FLEET.escortFireInterval,
+      fireCooldown: this.random() * 0.5,
+      alive: true,
+    };
   }
 
   beginNextWave() {
@@ -168,12 +185,16 @@ export class GameSimulation {
       const target = this.findAutoTarget(ship);
       if (!target) continue;
 
-      ship.fireCooldown += ship.fireInterval / this.formationSystem.current.fireRate;
+      ship.fireCooldown += ship.fireInterval
+        / this.formationSystem.current.fireRate
+        / this.progression.upgrades.autoFireRateMultiplier;
       this.spawnProjectile(ship, target, {
         faction: 'friendly',
         speed: FLEET.projectileSpeed,
         lifetime: FLEET.projectileLifetime,
-        damage: ship.damage * this.formationSystem.getAutoDamageMultiplier(target),
+        damage: ship.damage
+          * this.formationSystem.getAutoDamageMultiplier(target)
+          * this.progression.upgrades.formationMasteryMultiplier,
       });
     }
   }
@@ -262,10 +283,13 @@ export class GameSimulation {
       return { fired: false, reason: 'cooldown', target };
     }
 
-    this.volleyRemaining = VOLLEY.cooldown;
+    this.volleyRemaining = this.getVolleyCooldown();
     const formation = this.formationSystem.current;
     const volleyRadius = VOLLEY.radius * formation.volleyRadius;
-    const volleyDamage = VOLLEY.damage * formation.volleyDamage;
+    const volleyDamage = VOLLEY.damage
+      * formation.volleyDamage
+      * this.progression.upgrades.volleyDamageMultiplier
+      * this.progression.upgrades.formationMasteryMultiplier;
     const sources = this.friendlies.filter((ship) => ship.alive);
     this.emit('volleyFired', {
       ...target,
@@ -309,8 +333,68 @@ export class GameSimulation {
         formation: result.formation,
         paths: result.paths,
       });
+      this.onStateChange();
     }
     return result;
+  }
+
+  purchaseUpgrade(upgradeId) {
+    const result = this.progression.purchaseUpgrade(upgradeId);
+    if (!result.purchased) return result;
+    this.applyFleetUpgrades(upgradeId);
+    this.volleyRemaining = Math.min(this.volleyRemaining, this.getVolleyCooldown());
+    this.emit('upgradePurchased', {
+      ...result,
+      upgrade: this.progression.upgrades.snapshot().find(({ id }) => id === upgradeId),
+    });
+    return result;
+  }
+
+  applyFleetUpgrades(purchasedId) {
+    const desiredCount = this.progression.upgrades.fleetSize;
+    while (this.friendlies.length < desiredCount) {
+      const ship = this.createFriendly('escort', this.friendlies.length);
+      this.friendlies.push(ship);
+      this.emit('friendlyJoined', { id: ship.id, x: ship.x, y: ship.y });
+    }
+
+    for (const ship of this.friendlies) {
+      const isCommand = ship.role === 'command';
+      const baseHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
+      const nextMaxHealth = Math.round(baseHealth * this.progression.upgrades.durabilityMultiplier);
+      if (nextMaxHealth > ship.maxHealth) ship.health += nextMaxHealth - ship.maxHealth;
+      ship.maxHealth = nextMaxHealth;
+      ship.damage = (isCommand ? FLEET.commandDamage : FLEET.escortDamage)
+        * this.progression.upgrades.shipDamageMultiplier;
+
+      const nextMaxShield = this.progression.upgrades.getShieldFor(ship.role);
+      if (nextMaxShield > ship.maxShield) ship.shield += nextMaxShield - ship.maxShield;
+      ship.maxShield = nextMaxShield;
+    }
+
+    if (purchasedId === 'fleetSize') {
+      const paths = this.formationSystem.reflow(this.friendlies);
+      this.emit('formationChanged', {
+        formationId: this.formationSystem.currentId,
+        formation: this.formationSystem.current,
+        paths,
+      });
+    }
+  }
+
+  openShop() {
+    if (!['ready', 'running', 'paused', 'gameOver'].includes(this.status)) return false;
+    this.preShopStatus = this.status;
+    this.status = 'shopping';
+    this.emit('shopOpened', {});
+    return true;
+  }
+
+  closeShop() {
+    if (this.status !== 'shopping') return false;
+    this.status = this.preShopStatus === 'paused' ? 'paused' : this.preShopStatus;
+    this.emit('shopClosed', { status: this.status });
+    return true;
   }
 
   spawnProjectile(source, target, options) {
@@ -332,9 +416,23 @@ export class GameSimulation {
 
   damageEntity(entity, amount, source) {
     if (!entity?.alive || amount <= 0) return;
-    const adjustedAmount = entity.faction === 'friendly'
+    let adjustedAmount = entity.faction === 'friendly'
       ? amount * this.formationSystem.getIncomingDamageMultiplier()
+        / this.progression.upgrades.formationMasteryMultiplier
       : amount;
+    if (entity.faction === 'friendly' && entity.shield > 0) {
+      const absorbed = Math.min(entity.shield, adjustedAmount);
+      entity.shield -= absorbed;
+      adjustedAmount -= absorbed;
+      this.emit('shieldImpact', {
+        id: entity.id,
+        x: entity.x,
+        y: entity.y,
+        absorbed,
+        shield: entity.shield,
+      });
+      if (adjustedAmount <= 0) return;
+    }
     entity.health = Math.max(0, entity.health - adjustedAmount);
     this.emit('damaged', {
       id: entity.id,
@@ -373,8 +471,8 @@ export class GameSimulation {
     this.waveResolved = true;
     this.waveIntermission = WAVES.intermission;
     const reward = WAVES.clearRewardBase + this.wave * 3;
-    this.progression.recordWaveCleared(this.wave, reward);
-    this.emit('waveCleared', { wave: this.wave, reward });
+    const creditedReward = this.progression.recordWaveCleared(this.wave, reward);
+    this.emit('waveCleared', { wave: this.wave, reward: creditedReward });
   }
 
   endRun() {
@@ -421,7 +519,9 @@ export class GameSimulation {
   }
 
   findAutoTarget(source) {
-    const range = FLEET.effectiveRange * this.formationSystem.current.range;
+    const range = FLEET.effectiveRange
+      * this.formationSystem.current.range
+      * this.progression.upgrades.formationMasteryMultiplier;
     if (this.formationSystem.currentId !== 'splitWings') {
       return this.findNearest(source, this.enemies, range);
     }
@@ -450,20 +550,35 @@ export class GameSimulation {
 
   getSnapshot() {
     const command = this.getCommandShip();
+    const volleyCooldown = this.getVolleyCooldown();
     return {
       status: this.status,
       elapsed: this.elapsed,
       wave: this.wave,
       waveIntermission: this.waveIntermission,
-      volleyCharge: 1 - this.volleyRemaining / VOLLEY.cooldown,
+      volleyCharge: 1 - this.volleyRemaining / volleyCooldown,
       volleyRemaining: this.volleyRemaining,
+      volleyCooldown,
       commandHealth: command?.health ?? 0,
       commandMaxHealth: command?.maxHealth ?? FLEET.commandHealth,
+      commandShield: command?.shield ?? 0,
+      commandMaxShield: command?.maxShield ?? 0,
       friendlies: this.friendlies,
       enemies: this.enemies,
       projectiles: this.projectiles,
       progression: this.progression.snapshot(),
       formation: this.formationSystem.snapshot(),
+    };
+  }
+
+  getVolleyCooldown() {
+    return VOLLEY.cooldown * this.progression.upgrades.volleyCooldownMultiplier;
+  }
+
+  getPersistentState() {
+    return {
+      ...this.progression.exportState(),
+      selectedFormation: this.formationSystem.currentId,
     };
   }
 

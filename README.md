@@ -30,8 +30,12 @@ The current prototype includes:
 - damage, destruction, salvage rewards, defeat, and restart behavior;
 - a minimal HUD for wave, command health, salvage, volley readiness, and formation control;
 - distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys.
+- ten progressive upgrade branches with visible current/next effects and costs;
+- persistent salvage, upgrade levels, highest-wave progress, settings, and selected formation in `localStorage`;
+- capped offline patrol earnings with a clear return report;
+- fleet-size, durability, and visible shield upgrades that update the active formation immediately.
 
-Upgrades, local saving, offline earnings, additional enemy types, bosses, sound, and onboarding arrive in the remaining roadmap iterations.
+Additional enemy types, elites, bosses, sound, and onboarding arrive in the final roadmap iteration.
 
 ## Local development
 
@@ -57,6 +61,8 @@ The production output is written to `dist/`.
 - `src/config/balance.js` contains centralized gameplay and balance values.
 - `src/combat/GameSimulation.js` owns deterministic combat and wave rules.
 - `src/progression/RunProgression.js` tracks the current run's lightweight rewards.
+- `src/progression/UpgradeSystem.js` owns progressive costs and mechanical upgrade effects.
+- `src/persistence/PersistenceStore.js` validates local saves and calculates capped offline earnings.
 - `src/formations/FormationSystem.js` owns layouts, transitions, and formation combat modifiers.
 - `src/rendering/GameRenderer.js` turns combat state into procedural Three.js visuals and effects.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.

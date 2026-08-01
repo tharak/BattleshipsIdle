@@ -1,29 +1,65 @@
+import { UpgradeSystem } from './UpgradeSystem.js';
+
 export class RunProgression {
-  constructor() {
-    this.reset();
+  constructor({ state = {}, onChange = () => {} } = {}) {
+    this.currency = Math.max(0, Number(state.currency || 0));
+    this.lifetimeHighestWave = Math.max(0, Number(state.highestWave || 0));
+    this.totalDestroyed = Math.max(0, Number(state.totalDestroyed || 0));
+    this.upgrades = new UpgradeSystem(state.upgrades);
+    this.onChange = onChange;
+    this.resetRun();
   }
 
-  reset() {
-    this.salvage = 0;
+  resetRun() {
+    this.runSalvage = 0;
     this.destroyedEnemies = 0;
-    this.highestWave = 0;
   }
 
   recordEnemyDestroyed(reward) {
+    const adjustedReward = Math.max(0, Math.round(reward * this.upgrades.resourceMultiplier));
     this.destroyedEnemies += 1;
-    this.salvage += Math.max(0, Math.round(reward));
+    this.totalDestroyed += 1;
+    this.runSalvage += adjustedReward;
+    this.currency += adjustedReward;
+    this.onChange();
+    return adjustedReward;
   }
 
   recordWaveCleared(wave, reward) {
-    this.highestWave = Math.max(this.highestWave, wave);
-    this.salvage += Math.max(0, Math.round(reward));
+    const adjustedReward = Math.max(0, Math.round(reward * this.upgrades.resourceMultiplier));
+    this.lifetimeHighestWave = Math.max(this.lifetimeHighestWave, wave);
+    this.runSalvage += adjustedReward;
+    this.currency += adjustedReward;
+    this.onChange();
+    return adjustedReward;
+  }
+
+  purchaseUpgrade(id) {
+    const result = this.upgrades.purchase(id, this.currency);
+    if (!result.purchased) return result;
+    this.currency = result.currency;
+    this.onChange();
+    return result;
   }
 
   snapshot() {
     return {
-      salvage: this.salvage,
+      salvage: this.currency,
+      currency: this.currency,
+      runSalvage: this.runSalvage,
       destroyedEnemies: this.destroyedEnemies,
-      highestWave: this.highestWave,
+      highestWave: this.lifetimeHighestWave,
+      totalDestroyed: this.totalDestroyed,
+      upgrades: this.upgrades.snapshot(),
+    };
+  }
+
+  exportState() {
+    return {
+      currency: this.currency,
+      highestWave: this.lifetimeHighestWave,
+      totalDestroyed: this.totalDestroyed,
+      upgrades: this.upgrades.exportLevels(),
     };
   }
 }

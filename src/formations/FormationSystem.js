@@ -71,8 +71,18 @@ export class FormationSystem {
     });
   }
 
+  getPositionsForFleet(friendlies, formationId = this.currentId) {
+    const positions = this.getPositions(friendlies.length, formationId);
+    const commandIndex = friendlies.findIndex((ship) => ship.role === 'command');
+    const commandSlot = Math.floor(friendlies.length / 2);
+    if (commandIndex >= 0 && commandIndex !== commandSlot) {
+      [positions[commandIndex], positions[commandSlot]] = [positions[commandSlot], positions[commandIndex]];
+    }
+    return positions;
+  }
+
   applyInitialPositions(friendlies) {
-    const positions = this.getPositions(friendlies.length);
+    const positions = this.getPositionsForFleet(friendlies);
     friendlies.forEach((ship, index) => {
       ship.x = positions[index].x;
       ship.y = positions[index].y;
@@ -89,7 +99,7 @@ export class FormationSystem {
       return { changed: false, reason: 'cooldown' };
     }
 
-    const positions = this.getPositions(friendlies.length, formationId);
+    const positions = this.getPositionsForFleet(friendlies, formationId);
     const paths = friendlies.map((ship, index) => {
       const target = positions[index];
       ship.formationFromX = ship.x;
@@ -103,6 +113,20 @@ export class FormationSystem {
     this.transitionRemaining = FORMATION_CHANGE.duration;
     this.cooldownRemaining = FORMATION_CHANGE.cooldown;
     return { changed: true, formation: this.current, paths };
+  }
+
+  reflow(friendlies) {
+    const positions = this.getPositionsForFleet(friendlies);
+    const paths = friendlies.map((ship, index) => {
+      const target = positions[index];
+      ship.formationFromX = ship.x;
+      ship.formationFromY = ship.y;
+      ship.targetX = target.x;
+      ship.targetY = target.y;
+      return { from: { x: ship.x, y: ship.y }, to: { ...target } };
+    });
+    this.transitionRemaining = FORMATION_CHANGE.duration;
+    return paths;
   }
 
   update(friendlies, deltaSeconds) {

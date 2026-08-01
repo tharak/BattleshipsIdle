@@ -33,6 +33,7 @@
             <dt>Command integrity</dt>
             <dd><span id="health-value">100</span><span class="stat__unit">%</span></dd>
             <div class="meter meter--health" aria-hidden="true"><i id="health-fill"></i></div>
+            <div id="shield-meter" class="meter meter--shield" aria-hidden="true" hidden><i id="shield-fill"></i></div>
           </div>
           <div class="stat">
             <dt>Salvage</dt>
@@ -40,9 +41,14 @@
           </div>
         </dl>
 
-        <button id="pause-button" class="icon-button" type="button" aria-label="Pause game" disabled>
-          <span aria-hidden="true">Ⅱ</span>
-        </button>
+        <div class="hud-actions">
+          <button id="shop-button" class="icon-button" type="button" aria-label="Open fleet upgrades">
+            <span class="button-glyph" aria-hidden="true">UP</span>
+          </button>
+          <button id="pause-button" class="icon-button" type="button" aria-label="Pause game" disabled>
+            <span aria-hidden="true">Ⅱ</span>
+          </button>
+        </div>
       </header>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
@@ -111,6 +117,7 @@
           <button id="start-button" class="primary-button" type="button">
             <span>Deploy fleet</span><span aria-hidden="true">→</span>
           </button>
+          <button id="start-shop-button" class="secondary-button" type="button">Upgrade fleet</button>
         </div>
       </section>
 
@@ -121,6 +128,33 @@
           <p id="run-summary">Your fleet reached wave 1 and recovered 0 salvage.</p>
           <button id="restart-button" class="primary-button" type="button">
             <span>Reform fleet</span><span aria-hidden="true">↻</span>
+          </button>
+          <button id="gameover-shop-button" class="secondary-button" type="button">Upgrade fleet</button>
+        </div>
+      </section>
+
+      <section id="shop-overlay" class="modal-layer" aria-labelledby="shop-title" hidden>
+        <div class="shop-panel">
+          <header class="shop-header">
+            <div>
+              <span class="eyebrow eyebrow--bright">FLEET FOUNDRY</span>
+              <h2 id="shop-title">Upgrade command</h2>
+            </div>
+            <div class="shop-balance"><span>Salvage</span><strong id="shop-currency">0</strong></div>
+            <button id="shop-close-button" class="icon-button" type="button" aria-label="Close upgrades">×</button>
+          </header>
+          <div id="upgrade-list" class="upgrade-list"></div>
+        </div>
+      </section>
+
+      <section id="offline-overlay" class="modal-layer" aria-labelledby="offline-title" hidden>
+        <div class="offline-panel">
+          <span class="eyebrow eyebrow--bright">AUTONOMOUS PATROLS RETURNED</span>
+          <h2 id="offline-title">Fleet report</h2>
+          <strong id="offline-earned" class="offline-earned">+0 salvage</strong>
+          <p id="offline-detail">Your fleet held the line while command was away.</p>
+          <button id="offline-close-button" class="primary-button" type="button">
+            <span>Collect report</span><span aria-hidden="true">→</span>
           </button>
         </div>
       </section>

@@ -241,8 +241,23 @@ button:focus-visible {
   transition: transform 180ms ease, background-color 180ms ease;
 }
 
-.icon-button {
+.meter--shield {
+  margin-top: 3px;
+}
+
+.meter--shield i {
+  background: #72a7ff;
+  box-shadow: 0 0 8px #72a7ff;
+}
+
+.hud-actions {
+  display: flex;
   justify-self: end;
+  gap: 7px;
+  pointer-events: auto;
+}
+
+.icon-button {
   width: 48px;
   height: 48px;
   border-radius: 4px;
@@ -251,6 +266,13 @@ button:focus-visible {
   font-size: 16px;
   letter-spacing: 2px;
   cursor: pointer;
+}
+
+.button-glyph {
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
 
 .icon-button:disabled {
@@ -531,6 +553,173 @@ button:focus-visible {
   transform: translateY(1px);
 }
 
+.secondary-button {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 9px;
+  border: 1px solid rgba(84, 244, 235, 0.36);
+  color: var(--cyan-soft);
+  background: transparent;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.modal-layer {
+  position: absolute;
+  z-index: 14;
+  inset: 0;
+  display: grid;
+  padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  place-items: center;
+  background: rgba(2, 5, 14, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.shop-panel {
+  display: flex;
+  width: min(1040px, 100%);
+  max-height: min(820px, 94vh);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(84, 244, 235, 0.3);
+  background: rgba(5, 12, 29, 0.97);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.6);
+}
+
+.shop-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--panel-line);
+}
+
+.shop-header h2,
+.offline-panel h2 {
+  margin: 2px 0 0;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: clamp(24px, 4vw, 38px);
+  line-height: 1;
+}
+
+.shop-balance {
+  display: grid;
+  text-align: right;
+}
+
+.shop-balance span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.shop-balance strong {
+  color: var(--gold);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 24px;
+}
+
+.upgrade-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.upgrade-card {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid rgba(141, 162, 185, 0.16);
+  background: rgba(14, 27, 51, 0.72);
+}
+
+.upgrade-card__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(84, 244, 235, 0.3);
+  color: var(--cyan);
+  font-size: 19px;
+  place-items: center;
+}
+
+.upgrade-card h3 {
+  margin: 0;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 14px;
+}
+
+.upgrade-card__level {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.upgrade-card p {
+  margin: 3px 0 0;
+  color: #9eb2c5;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.upgrade-card p span {
+  color: var(--cyan-soft);
+}
+
+.upgrade-buy {
+  min-width: 90px;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 199, 108, 0.48);
+  color: var(--gold);
+  background: rgba(255, 199, 108, 0.07);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upgrade-buy:disabled {
+  border-color: rgba(141, 162, 185, 0.14);
+  color: #65768a;
+  cursor: default;
+}
+
+.offline-panel {
+  width: min(440px, 100%);
+  padding: clamp(26px, 6vw, 44px);
+  border: 1px solid rgba(84, 244, 235, 0.32);
+  background: rgba(5, 12, 29, 0.98);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
+}
+
+.offline-panel p {
+  margin: 12px 0 22px;
+  color: #aebfd1;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.offline-earned {
+  display: block;
+  margin-top: 18px;
+  color: var(--gold);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: clamp(28px, 7vw, 44px);
+}
+
 .pause-card {
   position: absolute;
   z-index: 8;
@@ -594,8 +783,12 @@ button:focus-visible {
   }
 
   .icon-button {
-    width: 46px;
+    width: 42px;
     height: 46px;
+  }
+
+  .hud-actions {
+    gap: 4px;
   }
 
   .hud--bottom {
@@ -659,6 +852,29 @@ button:focus-visible {
 
   .overlay__panel {
     padding: 28px 24px;
+  }
+
+  .shop-panel {
+    max-height: 96vh;
+  }
+
+  .shop-header {
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .shop-header h2 {
+    font-size: 23px;
+  }
+
+  .upgrade-list {
+    grid-template-columns: 1fr;
+    padding: 8px;
+  }
+
+  .upgrade-card {
+    min-height: 88px;
+    padding: 10px;
   }
 }
 
