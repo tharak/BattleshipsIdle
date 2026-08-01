@@ -66,7 +66,9 @@ export class UpgradeSystem {
     const level = this.getLevel('shieldStrength');
     if (level === 0) return 0;
     const escortShield = 24 + level * 14;
-    return role === 'command' ? Math.round(escortShield * 2.45) : escortShield;
+    if (role === 'command') return Math.round(escortShield * 2.45);
+    if (role === 'guardian') return Math.round(escortShield * 1.65);
+    return escortShield;
   }
 
   snapshot() {

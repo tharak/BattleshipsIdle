@@ -10,6 +10,13 @@ import {
 } from '../config/balance.js';
 import { RunProgression } from '../progression/RunProgression.js';
 import { FormationSystem } from '../formations/FormationSystem.js';
+import {
+  BOSS,
+  ELITE,
+  ENEMY_TYPES,
+  getAvailableEnemyTypes,
+  isBossWave,
+} from '../config/enemies.js';
 
 const TAU = Math.PI * 2;
 
@@ -77,16 +84,18 @@ export class GameSimulation {
   createFleet() {
     const count = this.progression.upgrades.fleetSize;
     const commandIndex = Math.floor(count / 2);
-    const fleet = Array.from({ length: count }, (_, index) => (
-      this.createFriendly(index === commandIndex ? 'command' : 'escort', index)
-    ));
+    const fleet = Array.from({ length: count }, (_, index) => {
+      const role = index === commandIndex ? 'command' : this.getFleetRole(index);
+      return this.createFriendly(role, index);
+    });
     this.formationSystem.applyInitialPositions(fleet);
     return fleet;
   }
 
   createFriendly(role, slot) {
     const isCommand = role === 'command';
-    const baseHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
+    const roleStats = this.getFriendlyBaseStats(role);
+    const baseHealth = roleStats.health;
     const maxHealth = Math.round(baseHealth * this.progression.upgrades.durabilityMultiplier);
     const maxShield = this.progression.upgrades.getShieldFor(role);
     return {
@@ -100,9 +109,8 @@ export class GameSimulation {
       maxHealth,
       shield: maxShield,
       maxShield,
-      damage: (isCommand ? FLEET.commandDamage : FLEET.escortDamage)
-        * this.progression.upgrades.shipDamageMultiplier,
-      fireInterval: isCommand ? FLEET.commandFireInterval : FLEET.escortFireInterval,
+      damage: roleStats.damage * this.progression.upgrades.shipDamageMultiplier,
+      fireInterval: roleStats.fireInterval,
       fireCooldown: this.random() * 0.5,
       alive: true,
     };
@@ -113,10 +121,12 @@ export class GameSimulation {
     this.waveResolved = false;
     this.waveIntermission = 0;
     const stats = getEnemyStats(this.wave);
-    const count = getWaveEnemyCount(this.wave);
+    const bossWave = isBossWave(this.wave);
+    const count = bossWave ? 3 : getWaveEnemyCount(this.wave);
     const columns = Math.min(6, count);
     const spacing = Math.min(15, 82 / Math.max(1, columns - 1));
 
+    const availableTypes = getAvailableEnemyTypes(this.wave);
     this.enemies = Array.from({ length: count }, (_, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
@@ -125,27 +135,68 @@ export class GameSimulation {
       const x = column < rowCount ? -rowWidth / 2 + column * spacing : 0;
       const yBand = WAVES.spawnTopMax - row * 12;
 
+      if (bossWave && index === 0) {
+        const tier = Math.max(0, Math.floor(this.wave / BOSS.everyWaves) - 1);
+        const health = Math.round(BOSS.baseHealth * BOSS.healthGrowth ** tier);
+        return {
+          id: `enemy-${this.nextId++}`,
+          faction: 'enemy', role: 'boss', type: 'boss', boss: true, elite: false,
+          x: 0, y: WAVES.spawnTopMax - 4, originX: 0, phase: this.random() * TAU, drift: 2.2,
+          health, maxHealth: health, speed: BOSS.speed + tier * 0.06,
+          damage: Math.round(BOSS.damage * BOSS.damageGrowth ** tier),
+          fireInterval: BOSS.fireInterval, fireCooldown: 1.15,
+          reward: Math.round(BOSS.reward * (1 + tier * 0.35)),
+          attackType: 'area', areaRadius: BOSS.areaRadius, scale: 2.35,
+          exposedRemaining: 0, alive: true,
+        };
+      }
+
+      const typeId = bossWave
+        ? (index === 1 ? 'skirmisher' : 'artillery')
+        : availableTypes[(index + this.wave) % availableTypes.length];
+      const type = ENEMY_TYPES[typeId];
+      const elite = !bossWave
+        && this.wave >= ELITE.firstWave
+        && this.wave % ELITE.everyWaves === 0
+        && index === 0;
+      const eliteHealth = elite ? ELITE.health : 1;
+      const eliteDamage = elite ? ELITE.damage : 1;
+      const eliteSpeed = elite ? ELITE.speed : 1;
+      const eliteReward = elite ? ELITE.reward : 1;
       return {
         id: `enemy-${this.nextId++}`,
         faction: 'enemy',
-        role: 'raider',
+        role: typeId,
+        type: typeId,
+        boss: false,
+        elite,
         x,
         y: clamp(yBand + (this.random() - 0.5) * 3, WAVES.spawnTopMin, WAVES.spawnTopMax),
         originX: x,
         phase: this.random() * TAU,
-        drift: 1.2 + this.random() * 1.6,
-        health: stats.maxHealth,
-        maxHealth: stats.maxHealth,
-        speed: stats.speed * (0.9 + this.random() * 0.18),
-        damage: stats.damage,
-        fireInterval: stats.fireInterval * (0.88 + this.random() * 0.24),
+        drift: type.drift * (1.2 + this.random() * 1.6),
+        health: Math.round(stats.maxHealth * type.health * eliteHealth),
+        maxHealth: Math.round(stats.maxHealth * type.health * eliteHealth),
+        speed: stats.speed * type.speed * eliteSpeed * (0.9 + this.random() * 0.18),
+        damage: stats.damage * type.damage * eliteDamage,
+        fireInterval: stats.fireInterval * type.fireInterval * (0.88 + this.random() * 0.24),
         fireCooldown: 0.8 + this.random() * stats.fireInterval,
-        reward: stats.reward,
+        reward: stats.reward * type.reward * eliteReward,
+        attackType: type.attackType,
+        areaRadius: type.areaRadius ?? 0,
+        scale: type.scale * (elite ? 1.22 : 1),
+        exposedRemaining: 0,
         alive: true,
       };
     });
 
-    this.emit('waveStarted', { wave: this.wave, enemyCount: count });
+    this.emit('waveStarted', {
+      wave: this.wave,
+      enemyCount: count,
+      enemyTypes: bossWave ? ['boss', 'skirmisher', 'artillery'] : availableTypes,
+      isBoss: bossWave,
+    });
+    if (bossWave) this.emit('bossWaveStarted', { wave: this.wave, name: BOSS.name });
   }
 
   update(deltaSeconds) {
@@ -204,6 +255,12 @@ export class GameSimulation {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
 
+      if (enemy.boss && enemy.exposedRemaining > 0) {
+        const before = enemy.exposedRemaining;
+        enemy.exposedRemaining = Math.max(0, enemy.exposedRemaining - dt);
+        if (before > 0 && enemy.exposedRemaining === 0) this.emit('bossBarrierRestored', { id: enemy.id });
+      }
+
       enemy.y -= enemy.speed * dt;
       enemy.x = clamp(
         enemy.originX + Math.sin(this.elapsed * 0.72 + enemy.phase) * enemy.drift,
@@ -232,6 +289,7 @@ export class GameSimulation {
         speed: ENEMIES.projectileSpeed,
         lifetime: ENEMIES.projectileLifetime,
         damage: enemy.damage,
+        areaRadius: enemy.areaRadius,
       });
     }
   }
@@ -255,7 +313,22 @@ export class GameSimulation {
 
       if (hitTarget) {
         projectile.alive = false;
-        this.damageEntity(hitTarget, projectile.damage, 'projectile');
+        if (projectile.areaRadius > 0) {
+          for (const target of targets) {
+            if (!target.alive || distanceSquared(target, hitTarget) > projectile.areaRadius ** 2) continue;
+            const distance = Math.sqrt(distanceSquared(target, hitTarget));
+            const falloff = 1 - 0.42 * (distance / projectile.areaRadius);
+            this.damageEntity(target, projectile.damage * falloff, 'area');
+          }
+          this.emit('areaImpact', {
+            x: hitTarget.x,
+            y: hitTarget.y,
+            radius: projectile.areaRadius,
+            faction: projectile.faction,
+          });
+        } else {
+          this.damageEntity(hitTarget, projectile.damage, 'projectile');
+        }
         this.emit('impact', {
           x: projectile.x,
           y: projectile.y,
@@ -310,6 +383,11 @@ export class GameSimulation {
       const damage = volleyDamage * edgeFalloff * (precise ? VOLLEY.precisionMultiplier : 1);
       hits += 1;
       if (precise) preciseHits += 1;
+      if (enemy.boss) {
+        const wasProtected = enemy.exposedRemaining <= 0;
+        enemy.exposedRemaining = BOSS.exposureDuration;
+        if (wasProtected) this.emit('bossExposed', { id: enemy.id, x: enemy.x, y: enemy.y });
+      }
       this.damageEntity(enemy, damage, 'volley');
       this.emit('impact', { x: enemy.x, y: enemy.y, faction: 'friendly', targetId: enemy.id, heavy: true });
     }
@@ -353,19 +431,19 @@ export class GameSimulation {
   applyFleetUpgrades(purchasedId) {
     const desiredCount = this.progression.upgrades.fleetSize;
     while (this.friendlies.length < desiredCount) {
-      const ship = this.createFriendly('escort', this.friendlies.length);
+      const slot = this.friendlies.length;
+      const ship = this.createFriendly(this.getFleetRole(slot), slot);
       this.friendlies.push(ship);
       this.emit('friendlyJoined', { id: ship.id, x: ship.x, y: ship.y });
     }
 
     for (const ship of this.friendlies) {
-      const isCommand = ship.role === 'command';
-      const baseHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
+      const roleStats = this.getFriendlyBaseStats(ship.role);
+      const baseHealth = roleStats.health;
       const nextMaxHealth = Math.round(baseHealth * this.progression.upgrades.durabilityMultiplier);
       if (nextMaxHealth > ship.maxHealth) ship.health += nextMaxHealth - ship.maxHealth;
       ship.maxHealth = nextMaxHealth;
-      ship.damage = (isCommand ? FLEET.commandDamage : FLEET.escortDamage)
-        * this.progression.upgrades.shipDamageMultiplier;
+      ship.damage = roleStats.damage * this.progression.upgrades.shipDamageMultiplier;
 
       const nextMaxShield = this.progression.upgrades.getShieldFor(ship.role);
       if (nextMaxShield > ship.maxShield) ship.shield += nextMaxShield - ship.maxShield;
@@ -397,6 +475,21 @@ export class GameSimulation {
     return true;
   }
 
+  openSettings() {
+    if (!['ready', 'running', 'paused', 'gameOver'].includes(this.status)) return false;
+    this.preSettingsStatus = this.status;
+    this.status = 'settings';
+    this.emit('settingsOpened', {});
+    return true;
+  }
+
+  closeSettings() {
+    if (this.status !== 'settings') return false;
+    this.status = this.preSettingsStatus === 'paused' ? 'paused' : this.preSettingsStatus;
+    this.emit('settingsClosed', { status: this.status });
+    return true;
+  }
+
   spawnProjectile(source, target, options) {
     const velocity = normalizedVelocity(source, target, options.speed);
     const projectile = {
@@ -407,6 +500,7 @@ export class GameSimulation {
       vx: velocity.vx,
       vy: velocity.vy,
       damage: options.damage,
+      areaRadius: options.areaRadius ?? 0,
       lifetime: options.lifetime,
       alive: true,
     };
@@ -420,6 +514,10 @@ export class GameSimulation {
       ? amount * this.formationSystem.getIncomingDamageMultiplier()
         / this.progression.upgrades.formationMasteryMultiplier
       : amount;
+    if (entity.boss && source === 'projectile' && entity.exposedRemaining <= 0) {
+      adjustedAmount *= 1 - BOSS.barrierReduction;
+      this.emit('bossBarrierImpact', { id: entity.id, x: entity.x, y: entity.y });
+    }
     if (entity.faction === 'friendly' && entity.shield > 0) {
       const absorbed = Math.min(entity.shield, adjustedAmount);
       entity.shield -= absorbed;
@@ -546,6 +644,22 @@ export class GameSimulation {
 
   getCommandShip() {
     return this.friendlies.find((ship) => ship.role === 'command') ?? null;
+  }
+
+  getFleetRole(slot) {
+    if (slot === 7) return 'lancer';
+    if (slot === 8) return 'guardian';
+    if (slot > 8) return slot % 2 === 1 ? 'lancer' : 'guardian';
+    return 'escort';
+  }
+
+  getFriendlyBaseStats(role) {
+    if (role === 'command') {
+      return { health: FLEET.commandHealth, damage: FLEET.commandDamage, fireInterval: FLEET.commandFireInterval };
+    }
+    if (role === 'lancer') return { health: 78, damage: 17, fireInterval: 0.9 };
+    if (role === 'guardian') return { health: 158, damage: 7.5, fireInterval: 1.02 };
+    return { health: FLEET.escortHealth, damage: FLEET.escortDamage, fireInterval: FLEET.escortFireInterval };
   }
 
   getSnapshot() {

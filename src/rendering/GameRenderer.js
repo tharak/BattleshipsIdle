@@ -9,6 +9,8 @@ const COLORS = Object.freeze({
   command: 0xffc76c,
   enemy: 0xff596f,
   enemyCore: 0xffc0c7,
+  elite: 0xffb14a,
+  boss: 0xb76cff,
   grid: 0x17314d,
 });
 
@@ -57,6 +59,7 @@ export class GameRenderer {
 
     this.clockTime = 0;
     this.shake = 0;
+    this.screenShakeEnabled = true;
     this.entityMeshes = new Map();
     this.projectileMeshes = new Map();
     this.effects = [];
@@ -79,6 +82,8 @@ export class GameRenderer {
       friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: COLORS.friendlyCore }),
       commandMaterial: createMaterial(COLORS.command, { emissiveIntensity: 0.78 }),
       enemyMaterial: createMaterial(COLORS.enemy, { emissiveIntensity: 0.88 }),
+      eliteMaterial: createMaterial(COLORS.elite, { emissiveIntensity: 0.96 }),
+      bossMaterial: createMaterial(COLORS.boss, { emissiveIntensity: 1.08 }),
       enemyCoreMaterial: new THREE.MeshBasicMaterial({ color: COLORS.enemyCore }),
       friendlyHaloMaterial: new THREE.MeshBasicMaterial({
         color: COLORS.friendly,
@@ -93,6 +98,14 @@ export class GameRenderer {
         opacity: 0.18,
         side: THREE.DoubleSide,
         depthWrite: false,
+      }),
+      bossHaloMaterial: new THREE.MeshBasicMaterial({
+        color: COLORS.boss,
+        transparent: true,
+        opacity: 0.32,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
       }),
       shieldMaterial: new THREE.MeshBasicMaterial({
         color: 0x72a7ff,
@@ -265,12 +278,17 @@ export class GameRenderer {
     const group = new THREE.Group();
     const friendly = entity.faction === 'friendly';
     const command = entity.role === 'command';
-    const scale = command ? 1.28 : 1;
+    const scale = (command ? 1.28 : 1) * (entity.scale ?? 1);
 
     if (friendly) {
+      const friendlyShape = entity.role === 'lancer'
+        ? [[0, 4.4], [-1, 0.1], [-1.45, -2.8], [0, -1.6], [1.45, -2.8], [1, 0.1]]
+        : entity.role === 'guardian'
+          ? [[0, 3.1], [-2.5, 1.1], [-3, -2.2], [0, -1.55], [3, -2.2], [2.5, 1.1]]
+          : [[0, 3.8], [-1.5, 0.4], [-2.5, -2.2], [0, -1.3], [2.5, -2.2], [1.5, 0.4]];
       const hull = new THREE.Mesh(
         new THREE.ExtrudeGeometry(
-          makeShape([[0, 3.8], [-1.5, 0.4], [-2.5, -2.2], [0, -1.3], [2.5, -2.2], [1.5, 0.4]]),
+          makeShape(friendlyShape),
           { depth: 0.75, bevelEnabled: true, bevelSize: 0.2, bevelThickness: 0.22, bevelSegments: 1 },
         ),
         command ? this.shared.commandMaterial : this.shared.friendlyMaterial,
@@ -278,7 +296,8 @@ export class GameRenderer {
       hull.position.z = -0.35;
       group.add(hull);
 
-      const wings = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.7, 0.45), this.shared.darkMaterial);
+      const wingWidth = entity.role === 'lancer' ? 3.8 : entity.role === 'guardian' ? 7 : 5.8;
+      const wings = new THREE.Mesh(new THREE.BoxGeometry(wingWidth, 0.7, 0.45), this.shared.darkMaterial);
       wings.position.set(0, -0.65, 0.3);
       group.add(wings);
 
@@ -286,12 +305,23 @@ export class GameRenderer {
       core.position.set(0, 0.55, 0.9);
       group.add(core);
     } else {
+      const enemyShape = entity.boss
+        ? [[0, -4], [-3.8, -2.4], [-5.2, 0.3], [-2.8, 3.4], [0, 2], [2.8, 3.4], [5.2, 0.3], [3.8, -2.4]]
+        : entity.type === 'skirmisher'
+          ? [[0, -4], [-1.4, 0], [-0.8, 2.8], [0, 1.5], [0.8, 2.8], [1.4, 0]]
+          : entity.type === 'bulwark'
+            ? [[0, -2.8], [-3.4, -1.2], [-3, 2.2], [0, 1.35], [3, 2.2], [3.4, -1.2]]
+            : entity.type === 'artillery'
+              ? [[0, -3.1], [-2.8, -0.4], [-2.4, 3], [-0.8, 1.8], [0.8, 1.8], [2.4, 3], [2.8, -0.4]]
+              : [[0, -3.2], [-2.5, -0.2], [-1.1, 2.4], [0, 1.35], [1.1, 2.4], [2.5, -0.2]];
       const hull = new THREE.Mesh(
         new THREE.ExtrudeGeometry(
-          makeShape([[0, -3.2], [-2.5, -0.2], [-1.1, 2.4], [0, 1.35], [1.1, 2.4], [2.5, -0.2]]),
+          makeShape(enemyShape),
           { depth: 0.7, bevelEnabled: true, bevelSize: 0.18, bevelThickness: 0.2, bevelSegments: 1 },
         ),
-        this.shared.enemyMaterial,
+        entity.boss
+          ? this.shared.bossMaterial
+          : entity.elite ? this.shared.eliteMaterial : this.shared.enemyMaterial,
       );
       hull.position.z = -0.35;
       group.add(hull);
@@ -299,14 +329,21 @@ export class GameRenderer {
       core.position.set(0, -0.15, 0.85);
       core.rotation.z = Math.PI / 4;
       group.add(core);
+      if (entity.boss) {
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.75, 0.55), this.shared.darkMaterial);
+        bridge.position.set(0, 0.15, 0.25);
+        group.add(bridge);
+      }
     }
 
     const halo = new THREE.Mesh(
       this.shared.haloGeometry,
-      friendly ? this.shared.friendlyHaloMaterial : this.shared.enemyHaloMaterial,
+      friendly
+        ? this.shared.friendlyHaloMaterial
+        : entity.boss ? this.shared.bossHaloMaterial : this.shared.enemyHaloMaterial,
     );
     halo.position.z = -0.2;
-    halo.scale.setScalar(command ? 1.45 : 1);
+    halo.scale.setScalar(entity.boss ? 2.2 : command ? 1.45 : entity.elite ? 1.32 : 1);
     group.add(halo);
 
     let shieldRing = null;
@@ -357,8 +394,10 @@ export class GameRenderer {
 
     this.shake = Math.max(0, this.shake - deltaSeconds * 2.7);
     const shakeAmount = this.shake * this.shake;
-    this.camera.position.x = this.baseCameraPosition.x + (Math.random() - 0.5) * shakeAmount;
-    this.camera.position.y = this.baseCameraPosition.y + (Math.random() - 0.5) * shakeAmount;
+    this.camera.position.x = this.baseCameraPosition.x
+      + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
+    this.camera.position.y = this.baseCameraPosition.y
+      + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
   }
 
   syncEntities(entities) {
@@ -377,6 +416,11 @@ export class GameRenderer {
       healthFill.position.x = -2.1 * (1 - healthRatio);
       group.userData.health.visible = healthRatio < 0.995;
       group.userData.halo.rotation.z += 0.012;
+      if (entity.boss) {
+        const exposed = entity.exposedRemaining > 0;
+        group.userData.halo.material.color.setHex(exposed ? COLORS.friendly : COLORS.boss);
+        group.userData.halo.material.opacity = exposed ? 0.58 : 0.28 + Math.sin(this.clockTime * 3) * 0.09;
+      }
       if (group.userData.shieldRing) {
         const shieldRatio = entity.maxShield > 0 ? entity.shield / entity.maxShield : 0;
         group.userData.shieldRing.visible = shieldRatio > 0;
@@ -444,6 +488,14 @@ export class GameRenderer {
         this.spawnImpact(event.x, event.y, 0x72a7ff, 1.35);
       } else if (event.type === 'friendlyJoined') {
         this.spawnImpact(event.x, event.y, COLORS.command, 1.8);
+      } else if (event.type === 'areaImpact') {
+        this.spawnImpact(event.x, event.y, 0xff8b5f, Math.max(2, event.radius / 4));
+        this.shake = Math.max(this.shake, 2.35);
+      } else if (event.type === 'bossExposed') {
+        this.spawnImpact(event.x, event.y, COLORS.friendly, 3.8);
+        this.shake = Math.max(this.shake, 2.7);
+      } else if (event.type === 'bossBarrierImpact') {
+        this.spawnImpact(event.x, event.y, COLORS.boss, 0.72);
       }
     }
   }
@@ -588,6 +640,11 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height, false);
+  }
+
+  setScreenShakeEnabled(enabled) {
+    this.screenShakeEnabled = Boolean(enabled);
+    if (!this.screenShakeEnabled) this.shake = 0;
   }
 
   resetScene() {

@@ -252,4 +252,80 @@ describe('GameSimulation', () => {
     expect(simulation.closeShop()).toBe(true);
     expect(simulation.getSnapshot().status).toBe('running');
   });
+
+  it('spawns an elite on wave three and a barrier boss on wave five', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    simulation.enemies = [];
+    simulation.wave = 2;
+    simulation.beginNextWave();
+    expect(simulation.enemies.some((enemy) => enemy.elite)).toBe(true);
+
+    simulation.enemies = [];
+    simulation.wave = 4;
+    simulation.beginNextWave();
+    const boss = simulation.enemies.find((enemy) => enemy.boss);
+    expect(boss).toBeDefined();
+    expect(boss.role).toBe('boss');
+    expect(simulation.consumeEvents().some((event) => event.type === 'bossWaveStarted')).toBe(true);
+  });
+
+  it('makes automatic fire weak against a boss until a volley exposes its hull', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    simulation.enemies = [];
+    simulation.wave = 4;
+    simulation.beginNextWave();
+    const boss = simulation.enemies.find((enemy) => enemy.boss);
+    const before = boss.health;
+
+    simulation.damageEntity(boss, 100, 'projectile');
+    expect(before - boss.health).toBeCloseTo(16);
+
+    const result = simulation.fireVolley(boss.x, boss.y);
+    expect(result.fired).toBe(true);
+    expect(boss.exposedRemaining).toBeGreaterThan(0);
+    expect(before - boss.health).toBeGreaterThan(100);
+  });
+
+  it('applies artillery area damage to clustered ships', () => {
+    const simulation = createSimulation();
+    simulation.changeFormation('denseColumn');
+    simulation.startRun();
+    const target = simulation.friendlies[0];
+    const before = simulation.friendlies.map((ship) => ship.health);
+    simulation.projectiles.push({
+      id: 'area-test', faction: 'enemy', x: target.x, y: target.y,
+      vx: 0, vy: 0, damage: 10, areaRadius: 24, lifetime: 1, alive: true,
+    });
+
+    simulation.updateProjectiles(1 / 60);
+    const damaged = simulation.friendlies.filter((ship, index) => ship.health < before[index]);
+    expect(damaged.length).toBeGreaterThan(1);
+    expect(simulation.consumeEvents().some((event) => event.type === 'areaImpact')).toBe(true);
+  });
+
+  it('unlocks distinct lancer and guardian classes with fleet-size upgrades', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { upgrades: { fleetSize: 2 } },
+    });
+
+    expect(simulation.friendlies).toHaveLength(9);
+    expect(simulation.friendlies.some((ship) => ship.role === 'lancer')).toBe(true);
+    expect(simulation.friendlies.some((ship) => ship.role === 'guardian')).toBe(true);
+  });
+
+  it('pauses combat while settings are open', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    advance(simulation, 0.5);
+    const elapsed = simulation.elapsed;
+
+    expect(simulation.openSettings()).toBe(true);
+    advance(simulation, 1);
+    expect(simulation.elapsed).toBe(elapsed);
+    expect(simulation.closeSettings()).toBe(true);
+    expect(simulation.status).toBe('running');
+  });
 });

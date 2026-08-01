@@ -14,8 +14,9 @@ The latest deployed build will be available at:
 - Tap or click the battlefield when the volley meter is ready to focus the fleet's fire at that position.
 - Friendly ships fire automatically; manual volleys deal concentrated damage and reward timing.
 - Destroy attackers to earn salvage and advance to harder waves.
+- Boss barriers blunt automatic fire. Land a coordinated volley to expose the hull, then capitalize before it restores.
 - Protect the command ship. If it is destroyed, use **Restart** to begin a new run.
-- Use the pause control when you need to suspend combat.
+- Use the pause and settings controls to suspend combat or adjust procedural audio and screen feedback.
 
 The interface is designed for touchscreens and also supports mouse input on desktop browsers.
 
@@ -25,17 +26,19 @@ The current prototype includes:
 
 - a responsive Three.js battlefield with original procedural ships and effects;
 - five animated formations and escalating enemy waves;
+- raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire and enemy pressure;
 - cooldown-limited touch/click coordinated volleys;
+- boss barriers that reward an accurately timed active volley;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
-- a minimal HUD for wave, command health, salvage, volley readiness, and formation control;
-- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys.
+- a readable HUD for wave, command health, salvage, boss status, volley readiness, and formation control;
+- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys;
 - ten progressive upgrade branches with visible current/next effects and costs;
 - persistent salvage, upgrade levels, highest-wave progress, settings, and selected formation in `localStorage`;
 - capped offline patrol earnings with a clear return report;
-- fleet-size, durability, and visible shield upgrades that update the active formation immediately.
-
-Additional enemy types, elites, bosses, sound, and onboarding arrive in the final roadmap iteration.
+- fleet-size, durability, and visible shield upgrades that update the active formation immediately;
+- unlockable lancer and guardian ship classes with distinct silhouettes and combat stats;
+- original procedural Web Audio cues, optional camera feedback, and touch-first onboarding.
 
 ## Local development
 
@@ -59,6 +62,7 @@ The production output is written to `dist/`.
 ## Project layout
 
 - `src/config/balance.js` contains centralized gameplay and balance values.
+- `src/config/enemies.js` contains enemy roles, elite modifiers, and boss balance.
 - `src/combat/GameSimulation.js` owns deterministic combat and wave rules.
 - `src/progression/RunProgression.js` tracks the current run's lightweight rewards.
 - `src/progression/UpgradeSystem.js` owns progressive costs and mechanical upgrade effects.
@@ -66,6 +70,7 @@ The production output is written to `dist/`.
 - `src/formations/FormationSystem.js` owns layouts, transitions, and formation combat modifiers.
 - `src/rendering/GameRenderer.js` turns combat state into procedural Three.js visuals and effects.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.
+- `src/audio/AudioManager.js` synthesizes original combat cues without downloaded assets.
 - `src/input/TargetingInput.js` maps touch and mouse pointer input into battlefield targeting orders.
 - `src/ui/HudController.js` owns HUD and deploy, pause, defeat, and restart interactions.
 - `src/main.js` connects the simulation, renderer, input, progression, and UI modules.

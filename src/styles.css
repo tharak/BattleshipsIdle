@@ -743,6 +743,75 @@ button:focus-visible {
   font-size: 12px;
 }
 
+.boss-status {
+  position: absolute;
+  z-index: 6;
+  top: max(84px, calc(env(safe-area-inset-top) + 78px));
+  left: 50%;
+  display: grid;
+  width: min(460px, calc(100vw - 32px));
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 5px 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(183, 108, 255, 0.48);
+  background: rgba(15, 8, 34, 0.86);
+  box-shadow: 0 0 36px rgba(183, 108, 255, 0.15);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.boss-status strong,
+.coachmark strong,
+.settings-panel h2,
+.setting-row strong {
+  font-family: "Chakra Petch", sans-serif;
+}
+
+.boss-status > div:first-child { grid-row: span 2; }
+.boss-status > div:first-child strong { display: block; font-size: 15px; text-transform: uppercase; }
+.boss-status > span { color: #d8bfff; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.boss-meter { height: 4px; overflow: hidden; background: rgba(183, 108, 255, 0.18); }
+.boss-meter i { display: block; width: 100%; height: 100%; background: #b76cff; box-shadow: 0 0 9px #b76cff; transform-origin: left; }
+.boss-status.is-exposed { border-color: rgba(84, 244, 235, 0.7); }
+.boss-status.is-exposed .boss-meter i { background: var(--cyan); box-shadow: 0 0 9px var(--cyan); }
+.boss-status.is-exposed > span { color: var(--cyan-soft); }
+
+.coachmark {
+  position: absolute;
+  z-index: 7;
+  top: 24%;
+  right: max(18px, env(safe-area-inset-right));
+  display: grid;
+  width: min(290px, calc(100vw - 36px));
+  gap: 3px;
+  padding: 14px 16px;
+  border-left: 2px solid var(--cyan);
+  background: rgba(5, 14, 32, 0.9);
+  box-shadow: 0 14px 45px rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+}
+
+.coachmark strong { font-size: 16px; text-transform: uppercase; }
+.coachmark > span:last-child { color: #aabed0; font-size: 11px; line-height: 1.45; }
+
+.settings-panel {
+  width: min(500px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(84, 244, 235, 0.3);
+  background: rgba(5, 12, 29, 0.98);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
+}
+
+.settings-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.settings-header h2 { margin: 2px 0 0; font-size: 34px; }
+.setting-row { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--panel-line); cursor: pointer; }
+.setting-row span { display: grid; gap: 3px; }
+.setting-row strong { font-size: 15px; }
+.setting-row small, .settings-note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.setting-row input { width: 24px; height: 24px; accent-color: var(--cyan); }
+.settings-note { margin: 14px 0 0; }
+
 [hidden] {
   display: none !important;
 }
@@ -775,7 +844,7 @@ button:focus-visible {
   }
 
   .stat--wide {
-    min-width: 126px;
+    min-width: 105px;
   }
 
   .stat dd {
@@ -783,7 +852,7 @@ button:focus-visible {
   }
 
   .icon-button {
-    width: 42px;
+    width: 39px;
     height: 46px;
   }
 
@@ -845,6 +914,14 @@ button:focus-visible {
     top: 14%;
     width: 90%;
   }
+
+  .boss-status {
+    top: max(72px, calc(env(safe-area-inset-top) + 66px));
+    grid-template-columns: 112px 1fr;
+    padding: 8px 10px;
+  }
+
+  .coachmark { top: 17%; right: 10px; }
 
   .overlay {
     padding: 18px;

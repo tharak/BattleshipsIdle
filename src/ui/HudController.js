@@ -9,7 +9,13 @@ export class HudController {
     onShopOpen,
     onShopClose,
     onUpgrade,
+    onSettingsOpen,
+    onSettingsClose,
+    onSettingChange,
+    onOnboardingComplete,
     offlineSummary,
+    settings,
+    onboardingComplete,
   }) {
     this.elements = {
       wave: document.querySelector('#wave-value'),
@@ -45,6 +51,18 @@ export class HudController {
       offlineEarned: document.querySelector('#offline-earned'),
       offlineDetail: document.querySelector('#offline-detail'),
       offlineCloseButton: document.querySelector('#offline-close-button'),
+      settingsButton: document.querySelector('#settings-button'),
+      settingsOverlay: document.querySelector('#settings-overlay'),
+      settingsCloseButton: document.querySelector('#settings-close-button'),
+      soundSetting: document.querySelector('#sound-setting'),
+      shakeSetting: document.querySelector('#shake-setting'),
+      bossStatus: document.querySelector('#boss-status'),
+      bossName: document.querySelector('#boss-name'),
+      bossHealthFill: document.querySelector('#boss-health-fill'),
+      bossBarrierState: document.querySelector('#boss-barrier-state'),
+      coachmark: document.querySelector('#coachmark'),
+      coachmarkTitle: document.querySelector('#coachmark-title'),
+      coachmarkDetail: document.querySelector('#coachmark-detail'),
     };
 
     this.messageTimer = 0;
@@ -55,6 +73,12 @@ export class HudController {
     this.elements.startShopButton.addEventListener('click', onShopOpen);
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
     this.elements.shopCloseButton.addEventListener('click', onShopClose);
+    this.elements.settingsButton.addEventListener('click', onSettingsOpen);
+    this.elements.settingsCloseButton.addEventListener('click', onSettingsClose);
+    this.elements.soundSetting.checked = settings.sound;
+    this.elements.shakeSetting.checked = settings.screenShake;
+    this.elements.soundSetting.addEventListener('change', () => onSettingChange('sound', this.elements.soundSetting.checked));
+    this.elements.shakeSetting.addEventListener('change', () => onSettingChange('screenShake', this.elements.shakeSetting.checked));
     this.elements.formationToggle.addEventListener('click', () => this.toggleFormationMenu());
     for (const option of this.elements.formationOptions) {
       option.addEventListener('click', () => {
@@ -64,6 +88,9 @@ export class HudController {
     }
     this.onUpgrade = onUpgrade;
     this.lastUpgradeSignature = '';
+    this.onboardingComplete = onboardingComplete;
+    this.onOnboardingComplete = onOnboardingComplete;
+    this.coachTimer = 0;
     this.showOfflineSummary(offlineSummary);
     this.setReadyState();
   }
@@ -128,6 +155,8 @@ export class HudController {
       this.elements.volleyLabel.textContent = 'Command unavailable';
     } else if (snapshot.status === 'shopping') {
       this.elements.volleyLabel.textContent = 'Foundry link open';
+    } else if (snapshot.status === 'settings') {
+      this.elements.volleyLabel.textContent = 'Command systems open';
     } else if (snapshot.waveIntermission > 0) {
       this.elements.volleyLabel.textContent = 'Fleet regrouping';
     } else if (ready) {
@@ -135,12 +164,26 @@ export class HudController {
     } else {
       this.elements.volleyLabel.textContent = `Charging — ${snapshot.volleyRemaining.toFixed(1)}s`;
     }
+
+    const boss = snapshot.enemies.find((enemy) => enemy.boss);
+    this.elements.bossStatus.hidden = !boss;
+    if (boss) {
+      const healthRatio = Math.max(0, boss.health / boss.maxHealth);
+      const exposed = boss.exposedRemaining > 0;
+      this.elements.bossName.textContent = 'Rift bastion';
+      this.elements.bossHealthFill.style.transform = `scaleX(${healthRatio})`;
+      this.elements.bossStatus.classList.toggle('is-exposed', exposed);
+      this.elements.bossBarrierState.textContent = exposed
+        ? `Hull exposed // ${boss.exposedRemaining.toFixed(1)}s`
+        : 'Barrier active // mark with volley';
+    }
   }
 
   handleEvents(events) {
     for (const event of events) {
       if (event.type === 'runStarted') {
         this.setRunningState();
+        this.beginOnboarding();
       } else if (event.type === 'waveStarted') {
         this.showMessage(`Wave ${event.wave} // ${event.enemyCount} contacts`, 1.3);
       } else if (event.type === 'waveCleared') {
@@ -148,6 +191,7 @@ export class HudController {
       } else if (event.type === 'volleyFired') {
         this.elements.volleyPanel.classList.add('is-fired');
         window.setTimeout(() => this.elements.volleyPanel.classList.remove('is-fired'), 130);
+        this.finishOnboarding();
       } else if (event.type === 'volleyResolved') {
         if (event.preciseHits > 0) {
           this.showMessage(`Precision lock // ${event.preciseHits} critical`, 1.1);
@@ -163,6 +207,16 @@ export class HudController {
         if (this.lastSnapshot) this.renderUpgrades(this.lastSnapshot, true);
       } else if (event.type === 'shopClosed') {
         this.elements.shopOverlay.hidden = true;
+      } else if (event.type === 'settingsOpened') {
+        this.elements.settingsOverlay.hidden = false;
+      } else if (event.type === 'settingsClosed') {
+        this.elements.settingsOverlay.hidden = true;
+      } else if (event.type === 'bossWaveStarted') {
+        this.showMessage(`${event.name} // coordinated strike required`, 2.2);
+      } else if (event.type === 'bossExposed') {
+        this.showMessage('Barrier collapsed // focus fire', 1.4);
+      } else if (event.type === 'bossBarrierRestored') {
+        this.showMessage('Barrier restored // recharge volley', 1.2);
       } else if (event.type === 'paused') {
         this.setPaused(true);
       } else if (event.type === 'resumed') {
@@ -257,5 +311,26 @@ export class HudController {
     this.elements.offlineCloseButton.addEventListener('click', () => {
       this.elements.offlineOverlay.hidden = true;
     }, { once: true });
+  }
+
+  beginOnboarding() {
+    if (this.onboardingComplete) return;
+    window.clearTimeout(this.coachTimer);
+    this.elements.coachmarkTitle.textContent = 'Auto-fire online';
+    this.elements.coachmarkDetail.textContent = 'Your ships engage targets in range without direct piloting.';
+    this.elements.coachmark.hidden = false;
+    this.coachTimer = window.setTimeout(() => {
+      if (this.onboardingComplete) return;
+      this.elements.coachmarkTitle.textContent = 'Your command matters';
+      this.elements.coachmarkDetail.textContent = 'Tap a clustered threat when the coordinated-volley ring is charged.';
+    }, 2800);
+  }
+
+  finishOnboarding() {
+    if (this.onboardingComplete) return;
+    this.onboardingComplete = true;
+    window.clearTimeout(this.coachTimer);
+    this.elements.coachmark.hidden = true;
+    this.onOnboardingComplete();
   }
 }

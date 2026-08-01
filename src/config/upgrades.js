@@ -30,7 +30,10 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
   }),
   fleetSize: Object.freeze({
     id: 'fleetSize', name: 'Fleet size', icon: '⋔', maxLevel: 5, baseCost: 180, costGrowth: 2.05,
-    describe: (level) => `${7 + level} active ships`,
+    describe: (level) => {
+      const unlock = level === 1 ? ' · Lancer unlocked' : level === 2 ? ' · Guardian unlocked' : '';
+      return `${7 + level} active ships${unlock}`;
+    },
   }),
   durability: Object.freeze({
     id: 'durability', name: 'Ship durability', icon: '⬡', maxLevel: 16, baseCost: 75, costGrowth: 1.56,

@@ -4,6 +4,7 @@ import { TargetingInput } from './input/TargetingInput.js';
 import { GameRenderer } from './rendering/GameRenderer.js';
 import { HudController } from './ui/HudController.js';
 import { PersistenceStore } from './persistence/PersistenceStore.js';
+import { AudioManager } from './audio/AudioManager.js';
 
 const FIXED_STEP = 1 / 60;
 const MAX_FRAME_CATCHUP = 0.2;
@@ -37,11 +38,14 @@ simulation = new GameSimulation({
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);
+const audio = new AudioManager({ enabled: persistentState.settings.sound });
+gameRenderer.setScreenShakeEnabled(persistentState.settings.screenShake);
 
 function consumeAndDispatchEvents() {
   const events = simulation.consumeEvents();
   if (events.length === 0) return;
   gameRenderer.handleEvents(events);
+  audio.handleEvents(events);
   hud.handleEvents(events);
 }
 
@@ -81,7 +85,29 @@ const hud = new HudController({
     persistNow();
     return { ...result, snapshot: simulation.getSnapshot() };
   },
+  onSettingsOpen: () => {
+    const opened = simulation.openSettings();
+    consumeAndDispatchEvents();
+    return opened;
+  },
+  onSettingsClose: () => {
+    const closed = simulation.closeSettings();
+    consumeAndDispatchEvents();
+    return closed;
+  },
+  onSettingChange: (key, enabled) => {
+    persistentState.settings = { ...persistentState.settings, [key]: enabled };
+    if (key === 'sound') audio.setEnabled(enabled);
+    if (key === 'screenShake') gameRenderer.setScreenShakeEnabled(enabled);
+    persistNow();
+  },
+  onOnboardingComplete: () => {
+    persistentState.onboardingComplete = true;
+    persistNow();
+  },
   offlineSummary: loadedSave.offline,
+  settings: persistentState.settings,
+  onboardingComplete: persistentState.onboardingComplete,
 });
 
 const targetingInput = new TargetingInput({
