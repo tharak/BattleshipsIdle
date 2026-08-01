@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#070b1a" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23070b1a'/%3E%3Cpath d='M16 4 27 16 16 28 5 16Z' fill='none' stroke='%2354f4eb' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%2354f4eb'/%3E%3C/svg%3E" />
+    <meta
+      name="description"
+      content="Voidline Command — an original touch-first fleet combat game built with Three.js."
+    />
+    <title>Voidline Command</title>
+  </head>
+  <body>
+    <main id="game-shell" aria-label="Voidline Command game">
+      <div id="battlefield" aria-label="Fleet battlefield. Tap or click to order a coordinated volley."></div>
+
+      <header class="hud hud--top" aria-label="Fleet status">
+        <div class="brand-lockup">
+          <span class="brand-lockup__mark" aria-hidden="true"></span>
+          <div>
+            <span class="eyebrow">VOIDLINE</span>
+            <strong>COMMAND</strong>
+          </div>
+        </div>
+
+        <dl class="stat-strip">
+          <div class="stat">
+            <dt>Wave</dt>
+            <dd id="wave-value">1</dd>
+          </div>
+          <div class="stat stat--wide">
+            <dt>Command integrity</dt>
+            <dd><span id="health-value">100</span><span class="stat__unit">%</span></dd>
+            <div class="meter meter--health" aria-hidden="true"><i id="health-fill"></i></div>
+          </div>
+          <div class="stat">
+            <dt>Salvage</dt>
+            <dd id="currency-value">0</dd>
+          </div>
+        </dl>
+
+        <button id="pause-button" class="icon-button" type="button" aria-label="Pause game" disabled>
+          <span aria-hidden="true">Ⅱ</span>
+        </button>
+      </header>
+
+      <section class="hud hud--bottom" aria-label="Combat controls">
+        <div class="formation-chip">
+          <span class="eyebrow">FORMATION</span>
+          <strong>Vanguard lattice</strong>
+        </div>
+
+        <div id="volley-panel" class="volley-panel" aria-live="polite">
+          <div class="volley-dial" aria-hidden="true">
+            <svg viewBox="0 0 44 44">
+              <circle class="volley-dial__track" cx="22" cy="22" r="18"></circle>
+              <circle id="volley-ring" class="volley-dial__fill" cx="22" cy="22" r="18"></circle>
+            </svg>
+            <span id="volley-symbol">◎</span>
+          </div>
+          <div>
+            <span class="eyebrow">COORDINATED VOLLEY</span>
+            <strong id="volley-label">Ready — tap a threat</strong>
+          </div>
+        </div>
+      </section>
+
+      <div id="message-banner" class="message-banner" aria-live="assertive"></div>
+
+      <section id="start-overlay" class="overlay overlay--visible" aria-labelledby="start-title">
+        <div class="overlay__panel">
+          <span class="eyebrow eyebrow--bright">TACTICAL LINK // ONLINE</span>
+          <h1 id="start-title">Hold the voidline.</h1>
+          <p>
+            Your fleet fires automatically. Read the enemy approach, then tap or click a cluster to unleash a synchronized strike.
+          </p>
+          <div class="control-primer" aria-label="Controls">
+            <div><span class="control-primer__icon">◎</span><span>Tap to mark a firing solution</span></div>
+            <div><span class="control-primer__icon">⌁</span><span>Volley energy recharges over time</span></div>
+          </div>
+          <button id="start-button" class="primary-button" type="button">
+            <span>Deploy fleet</span><span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="gameover-overlay" class="overlay" aria-labelledby="gameover-title" hidden>
+        <div class="overlay__panel">
+          <span class="eyebrow eyebrow--danger">COMMAND SIGNAL LOST</span>
+          <h2 id="gameover-title">The line has broken.</h2>
+          <p id="run-summary">Your fleet reached wave 1 and recovered 0 salvage.</p>
+          <button id="restart-button" class="primary-button" type="button">
+            <span>Reform fleet</span><span aria-hidden="true">↻</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="pause-overlay" class="pause-card" hidden aria-live="polite">
+        <span class="eyebrow">TACTICAL HOLD</span>
+        <strong>Simulation paused</strong>
+        <span>Tap pause to resume</span>
+      </section>
+
+      <div class="scanlines" aria-hidden="true"></div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
