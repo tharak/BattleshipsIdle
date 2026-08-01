@@ -191,7 +191,7 @@ export class GameRenderer {
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    const outer = new THREE.Mesh(new THREE.RingGeometry(4.8, 5.25, 48, 1, 0, Math.PI * 1.72), material);
+    const outer = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48, 1, 0, Math.PI * 1.72), material);
     const inner = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.5, 24), material.clone());
     const crossGeometry = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-7, 0, 0), new THREE.Vector3(-3.4, 0, 0),
@@ -201,6 +201,7 @@ export class GameRenderer {
     ]);
     const cross = new THREE.LineSegments(crossGeometry, material.clone());
     this.targetMarker.add(outer, inner, cross);
+    outer.userData.isRadiusRing = true;
     this.targetMarker.position.z = 4;
     this.targetMarker.visible = false;
     this.targetMarker.userData.life = 0;
@@ -403,7 +404,7 @@ export class GameRenderer {
         this.spawnImpact(event.x, event.y, event.faction === 'friendly' ? COLORS.friendly : COLORS.enemy, 3.2);
         this.shake = Math.max(this.shake, event.role === 'command' ? 3.5 : 1.6);
       } else if (event.type === 'volleyFired') {
-        this.showTarget(event.x, event.y, true);
+        this.showTarget(event.x, event.y, true, event.radius);
         this.spawnVolleyBeams(event);
         this.shake = Math.max(this.shake, 1.7);
       } else if (event.type === 'volleyRejected') {
@@ -411,6 +412,8 @@ export class GameRenderer {
       } else if (event.type === 'breach') {
         this.spawnImpact(event.x, event.y, COLORS.enemy, 2.5);
         this.shake = Math.max(this.shake, 2.2);
+      } else if (event.type === 'formationChanged') {
+        this.spawnFormationTrails(event.paths);
       }
     }
   }
@@ -450,6 +453,28 @@ export class GameRenderer {
     this.effects.push({ type: 'beam', object: beam, life: 0.28, maxLife: 0.28 });
   }
 
+  spawnFormationTrails(paths) {
+    const material = new THREE.LineDashedMaterial({
+      color: COLORS.friendly,
+      transparent: true,
+      opacity: 0.42,
+      dashSize: 1.2,
+      gapSize: 0.9,
+      depthWrite: false,
+    });
+    const points = [];
+    for (const path of paths) {
+      points.push(
+        new THREE.Vector3(path.from.x, path.from.y, 1.2),
+        new THREE.Vector3(path.to.x, path.to.y, 1.2),
+      );
+    }
+    const trails = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), material);
+    trails.computeLineDistances();
+    this.scene.add(trails);
+    this.effects.push({ type: 'formation', object: trails, life: 0.9, maxLife: 0.9 });
+  }
+
   updateEffects(dt) {
     const remaining = [];
     for (const effect of this.effects) {
@@ -479,7 +504,7 @@ export class GameRenderer {
     this.effects = remaining;
   }
 
-  showTarget(x, y, ready) {
+  showTarget(x, y, ready, radius = 15) {
     this.targetMarker.visible = true;
     this.targetMarker.position.set(x, y, 4);
     this.targetMarker.userData.life = ready ? 1.05 : 0.45;
@@ -489,6 +514,7 @@ export class GameRenderer {
     for (const child of this.targetMarker.children) {
       child.material.color.setHex(ready ? COLORS.friendly : COLORS.enemy);
       child.material.opacity = 0.9;
+      if (child.userData.isRadiusRing) child.scale.setScalar(radius);
     }
   }
 

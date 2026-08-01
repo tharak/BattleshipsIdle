@@ -33,6 +33,11 @@ const hud = new HudController({
     simulation.togglePause();
     consumeAndDispatchEvents();
   },
+  onFormation: (formationId) => {
+    const result = simulation.changeFormation(formationId);
+    consumeAndDispatchEvents();
+    return result;
+  },
 });
 
 const targetingInput = new TargetingInput({

@@ -1,7 +1,7 @@
 const VOLLEY_CIRCUMFERENCE = 2 * Math.PI * 18;
 
 export class HudController {
-  constructor({ onStart, onRestart, onPause }) {
+  constructor({ onStart, onRestart, onPause, onFormation }) {
     this.elements = {
       wave: document.querySelector('#wave-value'),
       health: document.querySelector('#health-value'),
@@ -19,12 +19,23 @@ export class HudController {
       restartButton: document.querySelector('#restart-button'),
       runSummary: document.querySelector('#run-summary'),
       pauseOverlay: document.querySelector('#pause-overlay'),
+      formationToggle: document.querySelector('#formation-toggle'),
+      formationLabel: document.querySelector('#formation-label'),
+      formationMenu: document.querySelector('#formation-menu'),
+      formationOptions: [...document.querySelectorAll('[data-formation]')],
     };
 
     this.messageTimer = 0;
     this.elements.startButton.addEventListener('click', onStart);
     this.elements.restartButton.addEventListener('click', onRestart);
     this.elements.pauseButton.addEventListener('click', onPause);
+    this.elements.formationToggle.addEventListener('click', () => this.toggleFormationMenu());
+    for (const option of this.elements.formationOptions) {
+      option.addEventListener('click', () => {
+        const result = onFormation(option.dataset.formation);
+        if (result?.changed) this.closeFormationMenu();
+      });
+    }
     this.setReadyState();
   }
 
@@ -33,6 +44,7 @@ export class HudController {
     this.elements.pauseOverlay.hidden = true;
     this.elements.gameoverOverlay.hidden = true;
     this.elements.gameoverOverlay.classList.remove('overlay--visible');
+    this.closeFormationMenu();
   }
 
   setRunningState() {
@@ -57,6 +69,16 @@ export class HudController {
     this.elements.healthFill.style.backgroundColor = healthRatio < 0.3 ? 'var(--danger)' : 'var(--cyan)';
     this.elements.currency.textContent = snapshot.progression.salvage.toLocaleString();
     this.elements.volleyRing.style.strokeDashoffset = String(VOLLEY_CIRCUMFERENCE * (1 - charge));
+    this.elements.formationLabel.textContent = snapshot.formation.current.name;
+    this.elements.formationToggle.setAttribute(
+      'aria-label',
+      `Choose formation. Current: ${snapshot.formation.current.name}`,
+    );
+    this.elements.formationToggle.disabled = snapshot.status === 'gameOver';
+    for (const option of this.elements.formationOptions) {
+      option.setAttribute('aria-pressed', String(option.dataset.formation === snapshot.formation.currentId));
+      option.disabled = snapshot.formation.cooldownRemaining > 0 && snapshot.status !== 'ready';
+    }
 
     const ready = charge >= 0.999 && snapshot.status === 'running' && snapshot.waveIntermission <= 0;
     this.elements.volleyPanel.classList.toggle('is-ready', ready);
@@ -87,6 +109,14 @@ export class HudController {
       } else if (event.type === 'volleyFired') {
         this.elements.volleyPanel.classList.add('is-fired');
         window.setTimeout(() => this.elements.volleyPanel.classList.remove('is-fired'), 130);
+      } else if (event.type === 'volleyResolved') {
+        if (event.preciseHits > 0) {
+          this.showMessage(`Precision lock // ${event.preciseHits} critical`, 1.1);
+        } else if (event.hits === 0) {
+          this.showMessage('Volley missed // solution lost', 0.9);
+        }
+      } else if (event.type === 'formationChanged') {
+        this.showMessage(`${event.formation.name} // ${event.formation.mechanic}`, 1.25);
       } else if (event.type === 'paused') {
         this.setPaused(true);
       } else if (event.type === 'resumed') {
@@ -123,5 +153,16 @@ export class HudController {
       `Your fleet reached wave ${wave}, destroyed ${progression.destroyedEnemies} contacts, and recovered ${progression.salvage} salvage.`;
     this.elements.gameoverOverlay.hidden = false;
     requestAnimationFrame(() => this.elements.gameoverOverlay.classList.add('overlay--visible'));
+  }
+
+  toggleFormationMenu() {
+    const open = this.elements.formationMenu.hidden;
+    this.elements.formationMenu.hidden = !open;
+    this.elements.formationToggle.setAttribute('aria-expanded', String(open));
+  }
+
+  closeFormationMenu() {
+    this.elements.formationMenu.hidden = true;
+    this.elements.formationToggle.setAttribute('aria-expanded', 'false');
   }
 }

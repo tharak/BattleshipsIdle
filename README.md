@@ -19,18 +19,19 @@ The latest deployed build will be available at:
 
 The interface is designed for touchscreens and also supports mouse input on desktop browsers.
 
-## Iteration 1
+## Playable systems
 
-The first playable prototype includes:
+The current prototype includes:
 
 - a responsive Three.js battlefield with original procedural ships and effects;
-- one friendly fleet formation and escalating enemy waves;
+- five animated formations and escalating enemy waves;
 - automatic friendly fire and enemy pressure;
 - cooldown-limited touch/click coordinated volleys;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
-- a minimal HUD for wave, command health, salvage, and volley readiness.
+- a minimal HUD for wave, command health, salvage, volley readiness, and formation control;
+- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys.
 
-Formation choices, upgrades, local saving, offline earnings, additional enemy types, bosses, sound, and onboarding are planned for later feedback-driven iterations.
+Upgrades, local saving, offline earnings, additional enemy types, bosses, sound, and onboarding arrive in the remaining roadmap iterations.
 
 ## Local development
 
@@ -56,6 +57,7 @@ The production output is written to `dist/`.
 - `src/config/balance.js` contains centralized gameplay and balance values.
 - `src/combat/GameSimulation.js` owns deterministic combat and wave rules.
 - `src/progression/RunProgression.js` tracks the current run's lightweight rewards.
+- `src/formations/FormationSystem.js` owns layouts, transitions, and formation combat modifiers.
 - `src/rendering/GameRenderer.js` turns combat state into procedural Three.js visuals and effects.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.
 - `src/input/TargetingInput.js` maps touch and mouse pointer input into battlefield targeting orders.

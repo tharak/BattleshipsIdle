@@ -154,4 +154,49 @@ describe('GameSimulation', () => {
     expect(healthAfter).toBeLessThan(healthBefore);
     expect(simulation.consumeEvents().some((event) => event.type === 'impact')).toBe(true);
   });
+
+  it('changes formation during combat and exposes its mechanical state', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const before = simulation.friendlies[0].x;
+
+    const result = simulation.changeFormation('wedge');
+    advance(simulation, 0.5);
+
+    expect(result.changed).toBe(true);
+    expect(simulation.getSnapshot().formation.currentId).toBe('wedge');
+    expect(simulation.friendlies[0].x).not.toBe(before);
+    expect(simulation.changeFormation('denseColumn')).toMatchObject({ changed: false, reason: 'cooldown' });
+  });
+
+  it('applies defensive arc mitigation to incoming damage', () => {
+    const simulation = createSimulation();
+    simulation.changeFormation('defensiveArc');
+    simulation.startRun();
+    const command = simulation.getCommandShip();
+
+    simulation.damageEntity(command, 100, 'test');
+
+    expect(command.maxHealth - command.health).toBeCloseTo(68);
+  });
+
+  it('makes dense-column volleys stronger and tighter', () => {
+    const line = createSimulation();
+    const column = createSimulation();
+    line.startRun();
+    column.changeFormation('denseColumn');
+    column.startRun();
+    line.enemies[0].health = 1000;
+    line.enemies[0].maxHealth = 1000;
+    column.enemies[0].health = 1000;
+    column.enemies[0].maxHealth = 1000;
+
+    const lineResult = line.fireVolley(line.enemies[0].x, line.enemies[0].y);
+    const columnResult = column.fireVolley(column.enemies[0].x, column.enemies[0].y);
+    const lineDamage = 1000 - line.enemies[0].health;
+    const columnDamage = 1000 - column.enemies[0].health;
+
+    expect(columnDamage).toBeGreaterThan(lineDamage);
+    expect(columnResult.hits).toBeLessThanOrEqual(lineResult.hits);
+  });
 });

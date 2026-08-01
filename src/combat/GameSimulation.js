@@ -9,6 +9,7 @@ import {
   getWaveEnemyCount,
 } from '../config/balance.js';
 import { RunProgression } from '../progression/RunProgression.js';
+import { FormationSystem } from '../formations/FormationSystem.js';
 
 const TAU = Math.PI * 2;
 
@@ -33,6 +34,7 @@ export class GameSimulation {
   constructor({ random = Math.random } = {}) {
     this.random = random;
     this.progression = new RunProgression();
+    this.formationSystem = new FormationSystem('line');
     this.nextId = 1;
     this.events = [];
     this.resetToReady();
@@ -46,6 +48,8 @@ export class GameSimulation {
     this.waveIntermission = 0;
     this.waveResolved = false;
     this.volleyRemaining = 0;
+    this.formationSystem.transitionRemaining = 0;
+    this.formationSystem.cooldownRemaining = 0;
     this.friendlies = this.createFleet();
     this.enemies = [];
     this.projectiles = [];
@@ -65,7 +69,7 @@ export class GameSimulation {
   }
 
   createFleet() {
-    return FLEET.positions.map((position, index) => {
+    const fleet = FLEET.positions.map((position, index) => {
       const isCommand = position.role === 'command';
       const maxHealth = isCommand ? FLEET.commandHealth : FLEET.escortHealth;
       return {
@@ -83,6 +87,8 @@ export class GameSimulation {
         alive: true,
       };
     });
+    this.formationSystem.applyInitialPositions(fleet);
+    return fleet;
   }
 
   beginNextWave() {
@@ -126,12 +132,18 @@ export class GameSimulation {
   }
 
   update(deltaSeconds) {
-    if (this.status !== 'running' || this.suspended) return;
+    if (this.suspended) return;
 
     const dt = clamp(deltaSeconds, 0, SIMULATION.maxDelta);
     if (dt === 0) return;
+    if (this.status === 'ready') {
+      this.formationSystem.update(this.friendlies, dt);
+      return;
+    }
+    if (this.status !== 'running') return;
     this.elapsed += dt;
     this.volleyRemaining = Math.max(0, this.volleyRemaining - dt);
+    this.formationSystem.update(this.friendlies, dt);
 
     if (this.waveResolved) {
       this.waveIntermission -= dt;
@@ -153,15 +165,15 @@ export class GameSimulation {
       ship.fireCooldown -= dt;
       if (ship.fireCooldown > 0) continue;
 
-      const target = this.findNearest(ship, this.enemies, FLEET.effectiveRange);
+      const target = this.findAutoTarget(ship);
       if (!target) continue;
 
-      ship.fireCooldown += ship.fireInterval;
+      ship.fireCooldown += ship.fireInterval / this.formationSystem.current.fireRate;
       this.spawnProjectile(ship, target, {
         faction: 'friendly',
         speed: FLEET.projectileSpeed,
         lifetime: FLEET.projectileLifetime,
-        damage: ship.damage,
+        damage: ship.damage * this.formationSystem.getAutoDamageMultiplier(target),
       });
     }
   }
@@ -251,19 +263,27 @@ export class GameSimulation {
     }
 
     this.volleyRemaining = VOLLEY.cooldown;
+    const formation = this.formationSystem.current;
+    const volleyRadius = VOLLEY.radius * formation.volleyRadius;
+    const volleyDamage = VOLLEY.damage * formation.volleyDamage;
     const sources = this.friendlies.filter((ship) => ship.alive);
-    this.emit('volleyFired', { ...target, sources: sources.map(({ x: sx, y: sy }) => ({ x: sx, y: sy })) });
+    this.emit('volleyFired', {
+      ...target,
+      radius: volleyRadius,
+      formationId: formation.id,
+      sources: sources.map(({ x: sx, y: sy }) => ({ x: sx, y: sy })),
+    });
 
     let hits = 0;
     let preciseHits = 0;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       const distance = Math.sqrt(distanceSquared(enemy, target));
-      if (distance > VOLLEY.radius) continue;
+      if (distance > volleyRadius) continue;
 
       const precise = distance <= VOLLEY.innerRadius;
-      const edgeFalloff = 0.58 + 0.42 * (1 - distance / VOLLEY.radius);
-      const damage = VOLLEY.damage * edgeFalloff * (precise ? VOLLEY.precisionMultiplier : 1);
+      const edgeFalloff = 0.58 + 0.42 * (1 - distance / volleyRadius);
+      const damage = volleyDamage * edgeFalloff * (precise ? VOLLEY.precisionMultiplier : 1);
       hits += 1;
       if (precise) preciseHits += 1;
       this.damageEntity(enemy, damage, 'volley');
@@ -272,7 +292,25 @@ export class GameSimulation {
 
     this.removeDestroyedEntities();
     this.resolveWaveIfNeeded();
+    this.emit('volleyResolved', { ...target, hits, preciseHits, formationId: formation.id });
     return { fired: true, target, hits, preciseHits };
+  }
+
+  changeFormation(formationId) {
+    if (!['ready', 'running', 'paused'].includes(this.status)) {
+      return { changed: false, reason: 'inactive' };
+    }
+    const result = this.formationSystem.changeTo(formationId, this.friendlies, {
+      ignoreCooldown: this.status === 'ready',
+    });
+    if (result.changed) {
+      this.emit('formationChanged', {
+        formationId,
+        formation: result.formation,
+        paths: result.paths,
+      });
+    }
+    return result;
   }
 
   spawnProjectile(source, target, options) {
@@ -294,13 +332,16 @@ export class GameSimulation {
 
   damageEntity(entity, amount, source) {
     if (!entity?.alive || amount <= 0) return;
-    entity.health = Math.max(0, entity.health - amount);
+    const adjustedAmount = entity.faction === 'friendly'
+      ? amount * this.formationSystem.getIncomingDamageMultiplier()
+      : amount;
+    entity.health = Math.max(0, entity.health - adjustedAmount);
     this.emit('damaged', {
       id: entity.id,
       faction: entity.faction,
       x: entity.x,
       y: entity.y,
-      amount,
+      amount: adjustedAmount,
       source,
       health: entity.health,
     });
@@ -379,6 +420,22 @@ export class GameSimulation {
     return best;
   }
 
+  findAutoTarget(source) {
+    const range = FLEET.effectiveRange * this.formationSystem.current.range;
+    if (this.formationSystem.currentId !== 'splitWings') {
+      return this.findNearest(source, this.enemies, range);
+    }
+
+    const candidates = this.enemies
+      .filter((enemy) => enemy.alive && distanceSquared(source, enemy) <= range * range)
+      .sort((left, right) => {
+        const leftSide = Math.abs(left.x) >= 19 ? 0 : 1;
+        const rightSide = Math.abs(right.x) >= 19 ? 0 : 1;
+        return leftSide - rightSide || distanceSquared(source, left) - distanceSquared(source, right);
+      });
+    return candidates[0] ?? null;
+  }
+
   pickEnemyTarget(enemy) {
     const alive = this.friendlies.filter((ship) => ship.alive);
     if (alive.length === 0) return null;
@@ -406,6 +463,7 @@ export class GameSimulation {
       enemies: this.enemies,
       projectiles: this.projectiles,
       progression: this.progression.snapshot(),
+      formation: this.formationSystem.snapshot(),
     };
   }
 

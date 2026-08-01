@@ -46,9 +46,38 @@
       </header>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
-        <div class="formation-chip">
-          <span class="eyebrow">FORMATION</span>
-          <strong>Vanguard lattice</strong>
+        <div class="formation-control">
+          <button
+            id="formation-toggle"
+            class="formation-chip"
+            type="button"
+            aria-label="Choose formation. Current: Line"
+            aria-expanded="false"
+            aria-controls="formation-menu"
+          >
+            <span class="formation-chip__glyph" aria-hidden="true">⌄</span>
+            <span>
+              <span class="eyebrow">FORMATION</span>
+              <strong id="formation-label">Line</strong>
+            </span>
+          </button>
+          <div id="formation-menu" class="formation-menu" role="group" aria-label="Fleet formation" hidden>
+            <button class="formation-option" type="button" data-formation="line">
+              <strong>Line</strong><span>Broad coverage</span><small>+12% range</small>
+            </button>
+            <button class="formation-option" type="button" data-formation="wedge">
+              <strong>Wedge</strong><span>Forward pressure</span><small>+18% auto damage</small>
+            </button>
+            <button class="formation-option" type="button" data-formation="defensiveArc">
+              <strong>Defensive arc</strong><span>Command shelter</span><small>−32% incoming</small>
+            </button>
+            <button class="formation-option" type="button" data-formation="splitWings">
+              <strong>Split wings</strong><span>Flank hunters</span><small>+48% side damage</small>
+            </button>
+            <button class="formation-option" type="button" data-formation="denseColumn">
+              <strong>Dense column</strong><span>Synchronized strike</span><small>+42% volley damage</small>
+            </button>
+          </div>
         </div>
 
         <div id="volley-panel" class="volley-panel" aria-live="polite">

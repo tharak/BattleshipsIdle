@@ -71,6 +71,91 @@ export const SIMULATION = Object.freeze({
   projectileHitRadius: 2.45,
 });
 
+export const FORMATION_CHANGE = Object.freeze({
+  duration: 1.15,
+  cooldown: 2.6,
+  movingIncomingDamage: 1.14,
+  movingAutoDamage: 0.78,
+});
+
+export const FORMATION_ORDER = Object.freeze([
+  'line',
+  'wedge',
+  'defensiveArc',
+  'splitWings',
+  'denseColumn',
+]);
+
+export const FORMATIONS = Object.freeze({
+  line: Object.freeze({
+    id: 'line',
+    name: 'Line',
+    shortName: 'Line',
+    description: 'Broad coverage',
+    mechanic: '+12% range',
+    autoDamage: 1,
+    fireRate: 1,
+    range: 1.12,
+    incomingDamage: 1,
+    volleyDamage: 1,
+    volleyRadius: 1,
+  }),
+  wedge: Object.freeze({
+    id: 'wedge',
+    name: 'Wedge',
+    shortName: 'Wedge',
+    description: 'Forward pressure',
+    mechanic: '+18% auto damage',
+    autoDamage: 1.18,
+    fireRate: 1.04,
+    range: 0.95,
+    incomingDamage: 1.08,
+    volleyDamage: 1.08,
+    volleyRadius: 0.94,
+  }),
+  defensiveArc: Object.freeze({
+    id: 'defensiveArc',
+    name: 'Defensive arc',
+    shortName: 'Arc',
+    description: 'Command shelter',
+    mechanic: '-32% incoming damage',
+    autoDamage: 0.87,
+    fireRate: 0.92,
+    range: 0.96,
+    incomingDamage: 0.68,
+    volleyDamage: 0.9,
+    volleyRadius: 1.06,
+  }),
+  splitWings: Object.freeze({
+    id: 'splitWings',
+    name: 'Split wings',
+    shortName: 'Wings',
+    description: 'Flank hunters',
+    mechanic: '+48% side damage',
+    autoDamage: 0.9,
+    fireRate: 1.02,
+    range: 1.08,
+    incomingDamage: 1.05,
+    volleyDamage: 1.02,
+    volleyRadius: 1.08,
+    sideDamage: 1.48,
+    centerDamage: 0.82,
+  }),
+  denseColumn: Object.freeze({
+    id: 'denseColumn',
+    name: 'Dense column',
+    shortName: 'Column',
+    description: 'Synchronized strike',
+    mechanic: '+42% volley damage',
+    autoDamage: 1.08,
+    fireRate: 1.06,
+    range: 0.9,
+    incomingDamage: 1.28,
+    volleyDamage: 1.42,
+    volleyRadius: 0.76,
+  }),
+});
+
 export function getWaveEnemyCount(wave) {
   return Math.min(
     WAVES.maxEnemies,
