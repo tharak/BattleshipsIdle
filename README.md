@@ -11,7 +11,8 @@ The latest deployed build will be available at:
 <https://tharak.github.io/BattleshipsIdle/>
 
 - Use the opening deployment overlay to send the fleet into battle.
-- Tap or click the battlefield when the volley meter is ready to focus the fleet's fire at that position.
+- Tap or click the battlefield when the pointer ring is charged to focus the fleet's fire at that position.
+- Choose formations from the five persistent fleet-diagram buttons along the bottom edge.
 - Friendly ships fire automatically; manual volleys deal concentrated damage and reward timing.
 - Destroy attackers to earn salvage and advance to harder waves.
 - Boss barriers blunt automatic fire. Land a coordinated volley to expose the hull, then capitalize before it restores.
@@ -31,7 +32,8 @@ The current prototype includes:
 - cooldown-limited touch/click coordinated volleys;
 - boss barriers that reward an accurately timed active volley;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
-- a readable HUD for wave, command health, salvage, boss status, volley readiness, and formation control;
+- a pointer-following volley charge ring and an always-visible icon formation bar;
+- a readable HUD for wave, command health, salvage, and boss status;
 - distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys;
 - ten progressive upgrade branches with visible current/next effects and costs;
 - persistent salvage, upgrade levels, highest-wave progress, settings, and selected formation in `localStorage`;
@@ -72,6 +74,7 @@ The production output is written to `dist/`.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.
 - `src/audio/AudioManager.js` synthesizes original combat cues without downloaded assets.
 - `src/input/TargetingInput.js` maps touch and mouse pointer input into battlefield targeting orders.
+- `src/ui/TargetingIndicator.js` keeps volley readiness attached to the mouse or last touch target.
 - `src/ui/HudController.js` owns HUD and deploy, pause, defeat, and restart interactions.
 - `src/main.js` connects the simulation, renderer, input, progression, and UI modules.
 - `tests/` covers deterministic game rules.

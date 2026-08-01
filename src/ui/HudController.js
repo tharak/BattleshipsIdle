@@ -1,5 +1,3 @@
-const VOLLEY_CIRCUMFERENCE = 2 * Math.PI * 18;
-
 export class HudController {
   constructor({
     onStart,
@@ -22,10 +20,6 @@ export class HudController {
       health: document.querySelector('#health-value'),
       healthFill: document.querySelector('#health-fill'),
       currency: document.querySelector('#currency-value'),
-      volleyPanel: document.querySelector('#volley-panel'),
-      volleyRing: document.querySelector('#volley-ring'),
-      volleyLabel: document.querySelector('#volley-label'),
-      volleySymbol: document.querySelector('#volley-symbol'),
       message: document.querySelector('#message-banner'),
       pauseButton: document.querySelector('#pause-button'),
       startOverlay: document.querySelector('#start-overlay'),
@@ -34,9 +28,6 @@ export class HudController {
       restartButton: document.querySelector('#restart-button'),
       runSummary: document.querySelector('#run-summary'),
       pauseOverlay: document.querySelector('#pause-overlay'),
-      formationToggle: document.querySelector('#formation-toggle'),
-      formationLabel: document.querySelector('#formation-label'),
-      formationMenu: document.querySelector('#formation-menu'),
       formationOptions: [...document.querySelectorAll('[data-formation]')],
       shieldMeter: document.querySelector('#shield-meter'),
       shieldFill: document.querySelector('#shield-fill'),
@@ -79,12 +70,8 @@ export class HudController {
     this.elements.shakeSetting.checked = settings.screenShake;
     this.elements.soundSetting.addEventListener('change', () => onSettingChange('sound', this.elements.soundSetting.checked));
     this.elements.shakeSetting.addEventListener('change', () => onSettingChange('screenShake', this.elements.shakeSetting.checked));
-    this.elements.formationToggle.addEventListener('click', () => this.toggleFormationMenu());
     for (const option of this.elements.formationOptions) {
-      option.addEventListener('click', () => {
-        const result = onFormation(option.dataset.formation);
-        if (result?.changed) this.closeFormationMenu();
-      });
+      option.addEventListener('click', () => onFormation(option.dataset.formation));
     }
     this.onUpgrade = onUpgrade;
     this.lastUpgradeSignature = '';
@@ -100,7 +87,6 @@ export class HudController {
     this.elements.pauseOverlay.hidden = true;
     this.elements.gameoverOverlay.hidden = true;
     this.elements.gameoverOverlay.classList.remove('overlay--visible');
-    this.closeFormationMenu();
   }
 
   setRunningState() {
@@ -117,8 +103,6 @@ export class HudController {
   update(snapshot) {
     const healthRatio = Math.max(0, snapshot.commandHealth / snapshot.commandMaxHealth);
     const healthPercent = Math.round(healthRatio * 100);
-    const charge = Math.max(0, Math.min(1, snapshot.volleyCharge));
-
     this.elements.wave.textContent = String(Math.max(1, snapshot.wave));
     this.elements.health.textContent = String(healthPercent);
     this.elements.healthFill.style.transform = `scaleX(${healthRatio})`;
@@ -130,40 +114,13 @@ export class HudController {
       : 0;
     this.elements.shieldMeter.hidden = snapshot.commandMaxShield <= 0;
     this.elements.shieldFill.style.transform = `scaleX(${shieldRatio})`;
-    this.elements.volleyRing.style.strokeDashoffset = String(VOLLEY_CIRCUMFERENCE * (1 - charge));
-    this.elements.formationLabel.textContent = snapshot.formation.current.name;
-    this.elements.formationToggle.setAttribute(
-      'aria-label',
-      `Choose formation. Current: ${snapshot.formation.current.name}`,
-    );
-    this.elements.formationToggle.disabled = snapshot.status === 'gameOver';
     for (const option of this.elements.formationOptions) {
       option.setAttribute('aria-pressed', String(option.dataset.formation === snapshot.formation.currentId));
-      option.disabled = snapshot.formation.cooldownRemaining > 0 && snapshot.status !== 'ready';
+      option.disabled = snapshot.status === 'gameOver'
+        || (snapshot.formation.cooldownRemaining > 0 && snapshot.status !== 'ready');
     }
     this.lastSnapshot = snapshot;
     if (!this.elements.shopOverlay.hidden) this.renderUpgrades(snapshot);
-
-    const ready = charge >= 0.999 && snapshot.status === 'running' && snapshot.waveIntermission <= 0;
-    this.elements.volleyPanel.classList.toggle('is-ready', ready);
-    this.elements.volleySymbol.textContent = ready ? '◎' : '⌁';
-    if (snapshot.status === 'ready') {
-      this.elements.volleyLabel.textContent = 'Awaiting deployment';
-    } else if (snapshot.status === 'paused') {
-      this.elements.volleyLabel.textContent = 'Tactical hold';
-    } else if (snapshot.status === 'gameOver') {
-      this.elements.volleyLabel.textContent = 'Command unavailable';
-    } else if (snapshot.status === 'shopping') {
-      this.elements.volleyLabel.textContent = 'Foundry link open';
-    } else if (snapshot.status === 'settings') {
-      this.elements.volleyLabel.textContent = 'Command systems open';
-    } else if (snapshot.waveIntermission > 0) {
-      this.elements.volleyLabel.textContent = 'Fleet regrouping';
-    } else if (ready) {
-      this.elements.volleyLabel.textContent = 'Ready — tap a threat';
-    } else {
-      this.elements.volleyLabel.textContent = `Charging — ${snapshot.volleyRemaining.toFixed(1)}s`;
-    }
 
     const boss = snapshot.enemies.find((enemy) => enemy.boss);
     this.elements.bossStatus.hidden = !boss;
@@ -189,8 +146,6 @@ export class HudController {
       } else if (event.type === 'waveCleared') {
         this.showMessage(`Sector clear // +${event.reward} salvage`, 1.6);
       } else if (event.type === 'volleyFired') {
-        this.elements.volleyPanel.classList.add('is-fired');
-        window.setTimeout(() => this.elements.volleyPanel.classList.remove('is-fired'), 130);
         this.finishOnboarding();
       } else if (event.type === 'volleyResolved') {
         if (event.preciseHits > 0) {
@@ -253,17 +208,6 @@ export class HudController {
       `Your fleet reached wave ${wave}, destroyed ${progression.destroyedEnemies} contacts, and recovered ${progression.runSalvage} salvage.`;
     this.elements.gameoverOverlay.hidden = false;
     requestAnimationFrame(() => this.elements.gameoverOverlay.classList.add('overlay--visible'));
-  }
-
-  toggleFormationMenu() {
-    const open = this.elements.formationMenu.hidden;
-    this.elements.formationMenu.hidden = !open;
-    this.elements.formationToggle.setAttribute('aria-expanded', String(open));
-  }
-
-  closeFormationMenu() {
-    this.elements.formationMenu.hidden = true;
-    this.elements.formationToggle.setAttribute('aria-expanded', 'false');
   }
 
   renderUpgrades(snapshot, force = false) {

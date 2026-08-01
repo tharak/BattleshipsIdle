@@ -5,11 +5,13 @@ import { GameRenderer } from './rendering/GameRenderer.js';
 import { HudController } from './ui/HudController.js';
 import { PersistenceStore } from './persistence/PersistenceStore.js';
 import { AudioManager } from './audio/AudioManager.js';
+import { TargetingIndicator } from './ui/TargetingIndicator.js';
 
 const FIXED_STEP = 1 / 60;
 const MAX_FRAME_CATCHUP = 0.2;
 
 const battlefield = document.querySelector('#battlefield');
+const gameShell = document.querySelector('#game-shell');
 const persistence = new PersistenceStore(window.localStorage);
 const loadedSave = persistence.load();
 let persistentState = loadedSave.state;
@@ -40,6 +42,10 @@ simulation = new GameSimulation({
 const gameRenderer = new GameRenderer(battlefield);
 const audio = new AudioManager({ enabled: persistentState.settings.sound });
 gameRenderer.setScreenShakeEnabled(persistentState.settings.screenShake);
+const targetingIndicator = new TargetingIndicator({
+  element: document.querySelector('#targeting-indicator'),
+  container: gameShell,
+});
 
 function consumeAndDispatchEvents() {
   const events = simulation.consumeEvents();
@@ -116,8 +122,10 @@ const targetingInput = new TargetingInput({
   onTarget: ({ x, y }) => {
     const result = simulation.fireVolley(x, y);
     consumeAndDispatchEvents();
+    targetingIndicator.reflectTargetResult(result);
     return result;
   },
+  onPointerChange: (pointer) => targetingIndicator.setPointer(pointer),
 });
 
 let previousTime = performance.now();
@@ -139,7 +147,9 @@ function frame(now) {
     gameRenderer.sync(snapshot, rawDelta);
     hud.update(snapshot);
     hud.tick(rawDelta);
-    targetingInput.setEnabled(snapshot.status === 'running');
+    const targetingActive = snapshot.status === 'running' && snapshot.waveIntermission <= 0;
+    targetingIndicator.setState({ charge: snapshot.volleyCharge, active: targetingActive });
+    targetingInput.setEnabled(targetingActive);
   }
 
   gameRenderer.render();
@@ -156,7 +166,10 @@ function handleVisibilityChange() {
   }
 }
 
-window.addEventListener('resize', () => gameRenderer.resize(), { passive: true });
+window.addEventListener('resize', () => {
+  gameRenderer.resize();
+  targetingIndicator.resize();
+}, { passive: true });
 window.addEventListener('pagehide', persistNow);
 document.addEventListener('visibilitychange', handleVisibilityChange);
 
