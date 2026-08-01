@@ -37,6 +37,24 @@ function normalizedVelocity(from, to, speed) {
   return { vx: (dx / length) * speed, vy: (dy / length) * speed };
 }
 
+function rayExitDistance(origin, direction) {
+  const distances = [];
+  if (direction.x > 0) distances.push((ARENA.maxX - origin.x) / direction.x);
+  if (direction.x < 0) distances.push((ARENA.minX - origin.x) / direction.x);
+  if (direction.y > 0) distances.push((ARENA.maxY - origin.y) / direction.y);
+  if (direction.y < 0) distances.push((ARENA.minY - origin.y) / direction.y);
+  return Math.min(...distances.filter((distance) => distance > 0));
+}
+
+function enemyHullRadius(enemy) {
+  const baseRadius = enemy.boss
+    ? 4.6
+    : enemy.type === 'bulwark' ? 3.1
+      : enemy.type === 'artillery' ? 2.7
+        : enemy.type === 'skirmisher' ? 1.8 : 2.5;
+  return baseRadius * (enemy.scale ?? 1);
+}
+
 export class GameSimulation {
   constructor({
     random = Math.random,
@@ -347,47 +365,78 @@ export class GameSimulation {
   }
 
   fireVolley(x, y) {
-    const target = {
+    const aim = {
       x: clamp(x, ARENA.minX, ARENA.maxX),
       y: clamp(y, ARENA.minY + 10, ARENA.maxY),
     };
 
     if (this.status !== 'running' || this.suspended || this.waveResolved) {
-      return { fired: false, reason: 'inactive', target };
+      return { fired: false, reason: 'inactive', target: aim };
     }
 
     if (this.volleyRemaining > 0) {
-      this.emit('volleyRejected', { ...target, remaining: this.volleyRemaining });
-      return { fired: false, reason: 'cooldown', target };
+      this.emit('volleyRejected', { ...aim, remaining: this.volleyRemaining });
+      return { fired: false, reason: 'cooldown', target: aim };
     }
 
     this.volleyRemaining = this.getVolleyCooldown();
     const formation = this.formationSystem.current;
-    const volleyRadius = VOLLEY.radius * formation.volleyRadius;
+    const beamHalfWidth = VOLLEY.beamHalfWidth * formation.strikeWidth;
     const volleyDamage = VOLLEY.damage
       * formation.volleyDamage
       * this.progression.upgrades.volleyDamageMultiplier
       * this.progression.upgrades.formationMasteryMultiplier;
     const flagship = this.getCommandShip();
-    this.emit('volleyFired', {
-      ...target,
-      radius: volleyRadius,
-      formationId: formation.id,
-      source: { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY },
-    });
+    const source = { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY };
+    const aimDx = aim.x - source.x;
+    const aimDy = aim.y - source.y;
+    const aimLength = Math.hypot(aimDx, aimDy);
+    const direction = aimLength > 0.001
+      ? { x: aimDx / aimLength, y: aimDy / aimLength }
+      : { x: 0, y: 1 };
+    const boundaryDistance = rayExitDistance(source, direction);
+    let strikeDistance = boundaryDistance;
+    let firstHit = null;
 
-    let hits = 0;
-    let preciseHits = 0;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      const distance = Math.sqrt(distanceSquared(enemy, target));
-      if (distance > volleyRadius) continue;
+      const relativeX = enemy.x - source.x;
+      const relativeY = enemy.y - source.y;
+      const distanceAlongRay = relativeX * direction.x + relativeY * direction.y;
+      if (distanceAlongRay <= 0 || distanceAlongRay > boundaryDistance) continue;
 
-      const precise = distance <= VOLLEY.innerRadius;
-      const edgeFalloff = 0.58 + 0.42 * (1 - distance / volleyRadius);
-      const damage = volleyDamage * edgeFalloff * (precise ? VOLLEY.precisionMultiplier : 1);
-      hits += 1;
-      if (precise) preciseHits += 1;
+      const perpendicularDistance = Math.abs(relativeX * direction.y - relativeY * direction.x);
+      const contactRadius = enemyHullRadius(enemy) + beamHalfWidth;
+      if (perpendicularDistance > contactRadius) continue;
+
+      const entryDistance = distanceAlongRay
+        - Math.sqrt(Math.max(0, contactRadius ** 2 - perpendicularDistance ** 2));
+      if (entryDistance >= strikeDistance) continue;
+      strikeDistance = Math.max(0, entryDistance);
+      firstHit = { enemy, perpendicularDistance };
+    }
+
+    const endpoint = {
+      x: source.x + direction.x * strikeDistance,
+      y: source.y + direction.y * strikeDistance,
+    };
+    this.emit('volleyFired', {
+      ...endpoint,
+      aim,
+      beamHalfWidth,
+      formationId: formation.id,
+      source,
+      hitId: firstHit?.enemy.id ?? null,
+    });
+
+    const hits = firstHit ? 1 : 0;
+    const precise = firstHit
+      ? firstHit.perpendicularDistance <= VOLLEY.precisionRadius * formation.strikeWidth
+      : false;
+    const preciseHits = precise ? 1 : 0;
+    if (firstHit) {
+      const { enemy } = firstHit;
+      const damage = volleyDamage * (precise ? VOLLEY.precisionMultiplier : 1);
       if (enemy.boss) {
         const wasProtected = enemy.exposedRemaining <= 0;
         enemy.exposedRemaining = BOSS.exposureDuration;
@@ -399,8 +448,15 @@ export class GameSimulation {
 
     this.removeDestroyedEntities();
     this.resolveWaveIfNeeded();
-    this.emit('volleyResolved', { ...target, hits, preciseHits, formationId: formation.id });
-    return { fired: true, target, hits, preciseHits };
+    this.emit('volleyResolved', {
+      ...aim,
+      endpoint,
+      hitId: firstHit?.enemy.id ?? null,
+      hits,
+      preciseHits,
+      formationId: formation.id,
+    });
+    return { fired: true, target: aim, endpoint, hitId: firstHit?.enemy.id ?? null, hits, preciseHits };
   }
 
   changeFormation(formationId) {

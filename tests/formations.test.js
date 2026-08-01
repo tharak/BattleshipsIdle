@@ -16,7 +16,12 @@ describe('FormationSystem', () => {
 
     expect(wedge).not.toEqual(line);
     expect(arc).not.toEqual(wedge);
+    expect(arc[0].y).toBeGreaterThan(arc[2].y);
+    expect(arc[3].y).toBe(Math.min(...arc.map(({ y }) => y)));
     expect(Math.max(...wings.map(({ x }) => Math.abs(x)))).toBeGreaterThan(35);
+    expect(wings[0].y).toBe(wings[2].y);
+    expect(wings[1].y).toBeLessThan(wings[0].y);
+    expect(wings[3].y).toBe(Math.min(...wings.map(({ y }) => y)));
     expect(Math.max(...column.map(({ x }) => Math.abs(x)))).toBeLessThan(6);
   });
 

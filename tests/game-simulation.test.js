@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FLEET, VOLLEY, WAVES } from '../src/config/balance.js';
+import { ARENA, FLEET, VOLLEY, WAVES } from '../src/config/balance.js';
 import { GameSimulation } from '../src/combat/GameSimulation.js';
 
 function createSimulation() {
@@ -36,7 +36,7 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().projectiles.length).toBeGreaterThan(0);
   });
 
-  it('rewards a precise volley and enforces its cooldown', () => {
+  it('rewards a precise flagship strike and enforces its cooldown', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.consumeEvents();
@@ -49,11 +49,40 @@ describe('GameSimulation', () => {
 
     expect(first.fired).toBe(true);
     expect(first.preciseHits).toBeGreaterThanOrEqual(1);
+    expect(first.hitId).toBe(target.id);
     expect(firedEvent.source).toMatchObject({ x: simulation.getCommandShip().x, y: simulation.getCommandShip().y });
     expect(firedEvent.sources).toBeUndefined();
     expect(salvageAfterHit).toBeGreaterThan(0);
     expect(second).toMatchObject({ fired: false, reason: 'cooldown' });
     expect(simulation.getSnapshot().volleyRemaining).toBeCloseTo(VOLLEY.cooldown);
+  });
+
+  it('stops the flagship beam at the first enemy hull in its path', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [near, far, ...others] = simulation.enemies;
+    Object.assign(near, { x: 0, y: -8, health: 1000, maxHealth: 1000, scale: 1 });
+    Object.assign(far, { x: 0, y: 28, health: 1000, maxHealth: 1000, scale: 1 });
+    others.forEach((enemy) => { enemy.x = 40; });
+
+    const result = simulation.fireVolley(0, ARENA.maxY);
+
+    expect(result.hitId).toBe(near.id);
+    expect(near.health).toBeLessThan(1000);
+    expect(far.health).toBe(1000);
+    expect(result.endpoint.y).toBeLessThan(near.y);
+  });
+
+  it('extends a missed flagship beam to the battlefield boundary', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    simulation.enemies.forEach((enemy) => { enemy.x = 40; });
+
+    const result = simulation.fireVolley(0, ARENA.maxY);
+
+    expect(result.hits).toBe(0);
+    expect(result.hitId).toBeNull();
+    expect(result.endpoint).toMatchObject({ x: 0, y: ARENA.maxY });
   });
 
   it('clears a defeated wave, grants a wave reward, and starts the next wave', () => {
@@ -186,7 +215,7 @@ describe('GameSimulation', () => {
     expect(command.maxHealth - command.health).toBeCloseTo(68);
   });
 
-  it('makes dense-column volleys stronger and tighter', () => {
+  it('makes dense-column flagship strikes stronger', () => {
     const line = createSimulation();
     const column = createSimulation();
     line.startRun();
@@ -203,7 +232,7 @@ describe('GameSimulation', () => {
     const columnDamage = 1000 - column.enemies[0].health;
 
     expect(columnDamage).toBeGreaterThan(lineDamage);
-    expect(columnResult.hits).toBeLessThanOrEqual(lineResult.hits);
+    expect(columnResult.hits).toBe(lineResult.hits);
   });
 
   it('applies purchased upgrades immediately and keeps currency persistent', () => {
@@ -274,7 +303,7 @@ describe('GameSimulation', () => {
     expect(simulation.consumeEvents().some((event) => event.type === 'bossWaveStarted')).toBe(true);
   });
 
-  it('makes automatic fire weak against a boss until a volley exposes its hull', () => {
+  it('makes automatic fire weak against a boss until a flagship strike exposes its hull', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.enemies = [];

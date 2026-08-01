@@ -513,7 +513,7 @@ export class GameRenderer {
         this.spawnImpact(event.x, event.y, event.faction === 'friendly' ? COLORS.friendly : COLORS.enemy, 3.2);
         this.shake = Math.max(this.shake, event.role === 'command' ? 3.5 : 1.6);
       } else if (event.type === 'volleyFired') {
-        this.showTarget(event.x, event.y, true, event.radius);
+        this.showTarget(event.aim.x, event.aim.y, true, event.beamHalfWidth + 1.4);
         this.spawnFlagshipStrike(event);
         this.shake = Math.max(this.shake, 2.8);
       } else if (event.type === 'volleyRejected') {
@@ -562,19 +562,23 @@ export class GameRenderer {
     const length = Math.hypot(dx, dy);
     const group = new THREE.Group();
     const materials = [
-      new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthWrite: false }),
-      new THREE.MeshBasicMaterial({ color: 0xffe4a8, transparent: true, opacity: 0.88, blending: THREE.AdditiveBlending, depthWrite: false }),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0xffe4a8, transparent: true, opacity: 0.88, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
     ];
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(7.2, length), materials[0]);
     const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.35, length), materials[1]);
     const core = new THREE.Mesh(new THREE.PlaneGeometry(0.62, length), materials[2]);
+    for (const visual of [glow, beam, core]) {
+      visual.frustumCulled = false;
+      visual.renderOrder = 8;
+    }
     group.add(glow, beam, core);
     group.position.set((event.source.x + event.x) / 2, (event.source.y + event.y) / 2, 4.2);
     group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
     group.userData.materials = materials;
     this.scene.add(group);
-    this.effects.push({ type: 'flagshipStrike', object: group, life: 0.72, maxLife: 0.72 });
+    this.effects.push({ type: 'flagshipStrike', object: group, life: 1.16, maxLife: 1.16 });
     this.spawnImpact(event.source.x, event.source.y, COLORS.command, 2.7);
     this.spawnImpact(event.x, event.y, COLORS.friendly, 4.4);
   }
@@ -617,7 +621,7 @@ export class GameRenderer {
         }
       } else if (effect.type === 'flagshipStrike') {
         effect.life -= dt;
-        const ratio = Math.max(0, effect.life / effect.maxLife);
+        const ratio = Math.max(0, Math.min(1, effect.life / 0.28));
         effect.object.userData.materials[0].opacity = ratio * 0.34;
         effect.object.userData.materials[1].opacity = ratio * 0.88;
         effect.object.userData.materials[2].opacity = ratio;
@@ -642,10 +646,10 @@ export class GameRenderer {
     this.effects = remaining;
   }
 
-  showTarget(x, y, ready, radius = 15) {
+  showTarget(x, y, ready, radius = 3.2) {
     this.targetMarker.visible = true;
     this.targetMarker.position.set(x, y, 4);
-    this.targetMarker.userData.life = ready ? 1.05 : 0.45;
+    this.targetMarker.userData.life = ready ? 1.16 : 0.45;
     this.targetMarker.userData.maxLife = this.targetMarker.userData.life;
     this.targetMarker.userData.ready = ready;
     this.targetMarker.scale.setScalar(ready ? 0.55 : 0.85);

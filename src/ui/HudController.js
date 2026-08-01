@@ -2,7 +2,6 @@ export class HudController {
   constructor({
     onStart,
     onRestart,
-    onPause,
     onFormation,
     onShopOpen,
     onShopClose,
@@ -12,7 +11,6 @@ export class HudController {
     onboardingComplete,
   }) {
     this.elements = {
-      wave: document.querySelector('#wave-value'),
       currency: document.querySelector('#currency-value'),
       flagshipVitals: document.querySelector('#flagship-vitals'),
       flagshipHullFill: document.querySelector('#flagship-hull-fill'),
@@ -20,13 +18,11 @@ export class HudController {
       flagshipShieldFill: document.querySelector('#flagship-shield-fill'),
       flagshipShieldValue: document.querySelector('#flagship-shield-value'),
       message: document.querySelector('#message-banner'),
-      pauseButton: document.querySelector('#pause-button'),
       startOverlay: document.querySelector('#start-overlay'),
       startButton: document.querySelector('#start-button'),
       gameoverOverlay: document.querySelector('#gameover-overlay'),
       restartButton: document.querySelector('#restart-button'),
       runSummary: document.querySelector('#run-summary'),
-      pauseOverlay: document.querySelector('#pause-overlay'),
       formationOptions: [...document.querySelectorAll('[data-formation]')],
       shopButton: document.querySelector('#shop-button'),
       startShopButton: document.querySelector('#start-shop-button'),
@@ -51,7 +47,6 @@ export class HudController {
     this.messageTimer = 0;
     this.elements.startButton.addEventListener('click', onStart);
     this.elements.restartButton.addEventListener('click', onRestart);
-    this.elements.pauseButton.addEventListener('click', onPause);
     this.elements.shopButton.addEventListener('click', onShopOpen);
     this.elements.startShopButton.addEventListener('click', onShopOpen);
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
@@ -69,8 +64,6 @@ export class HudController {
   }
 
   setReadyState() {
-    this.elements.pauseButton.disabled = true;
-    this.elements.pauseOverlay.hidden = true;
     this.elements.gameoverOverlay.hidden = true;
     this.elements.gameoverOverlay.classList.remove('overlay--visible');
   }
@@ -78,16 +71,11 @@ export class HudController {
   setRunningState() {
     this.elements.startOverlay.classList.remove('overlay--visible');
     this.elements.startOverlay.hidden = true;
-    this.elements.pauseButton.disabled = false;
-    this.elements.pauseButton.querySelector('span').textContent = 'Ⅱ';
-    this.elements.pauseButton.setAttribute('aria-label', 'Pause game');
-    this.elements.pauseOverlay.hidden = true;
     this.elements.gameoverOverlay.hidden = true;
     this.elements.gameoverOverlay.classList.remove('overlay--visible');
   }
 
   update(snapshot, flagshipScreenPosition = null) {
-    this.elements.wave.textContent = String(Math.max(1, snapshot.wave));
     this.elements.currency.textContent = snapshot.progression.salvage.toLocaleString();
     this.elements.shopButton.setAttribute(
       'aria-label',
@@ -168,10 +156,6 @@ export class HudController {
         this.showMessage('Barrier restored // flagship recharging', 1.2);
       } else if (event.type === 'volleyReady') {
         this.showMessage('Flagship weapon // ready', 1.1);
-      } else if (event.type === 'paused') {
-        this.setPaused(true);
-      } else if (event.type === 'resumed') {
-        this.setPaused(false);
       } else if (event.type === 'gameOver') {
         this.showGameOver(event);
       }
@@ -190,16 +174,8 @@ export class HudController {
     this.messageTimer = duration;
   }
 
-  setPaused(paused) {
-    this.elements.pauseOverlay.hidden = !paused;
-    this.elements.pauseButton.querySelector('span').textContent = paused ? '▶' : 'Ⅱ';
-    this.elements.pauseButton.setAttribute('aria-label', paused ? 'Resume game' : 'Pause game');
-  }
-
   showGameOver(event) {
     const { progression, wave } = event;
-    this.elements.pauseButton.disabled = true;
-    this.elements.pauseOverlay.hidden = true;
     this.elements.runSummary.textContent =
       `Your fleet reached wave ${wave}, destroyed ${progression.destroyedEnemies} contacts, and recovered ${progression.runSalvage} salvage.`;
     this.elements.gameoverOverlay.hidden = false;
@@ -262,7 +238,7 @@ export class HudController {
     this.coachTimer = window.setTimeout(() => {
       if (this.onboardingComplete) return;
       this.elements.coachmarkTitle.textContent = 'Your command matters';
-      this.elements.coachmarkDetail.textContent = 'Tap a clustered threat when the flagship charge lights are full.';
+      this.elements.coachmarkDetail.textContent = 'Aim down an attack lane when charged. The beam stops on the first enemy hull.';
     }, 2800);
   }
 

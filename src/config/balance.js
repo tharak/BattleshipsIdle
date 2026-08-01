@@ -49,8 +49,8 @@ export const ENEMIES = Object.freeze({
 
 export const VOLLEY = Object.freeze({
   cooldown: 5.8,
-  radius: 15,
-  innerRadius: 4.8,
+  beamHalfWidth: 1.25,
+  precisionRadius: 1.15,
   damage: 75,
   precisionMultiplier: 1.55,
 });
@@ -98,7 +98,7 @@ export const FORMATIONS = Object.freeze({
     range: 1.12,
     incomingDamage: 1,
     volleyDamage: 1,
-    volleyRadius: 1,
+    strikeWidth: 1,
   }),
   wedge: Object.freeze({
     id: 'wedge',
@@ -111,7 +111,7 @@ export const FORMATIONS = Object.freeze({
     range: 0.95,
     incomingDamage: 1.08,
     volleyDamage: 1.08,
-    volleyRadius: 0.94,
+    strikeWidth: 0.94,
   }),
   defensiveArc: Object.freeze({
     id: 'defensiveArc',
@@ -124,7 +124,7 @@ export const FORMATIONS = Object.freeze({
     range: 0.96,
     incomingDamage: 0.68,
     volleyDamage: 0.9,
-    volleyRadius: 1.06,
+    strikeWidth: 1.06,
   }),
   splitWings: Object.freeze({
     id: 'splitWings',
@@ -137,7 +137,7 @@ export const FORMATIONS = Object.freeze({
     range: 1.08,
     incomingDamage: 1.05,
     volleyDamage: 1.02,
-    volleyRadius: 1.08,
+    strikeWidth: 1.08,
     sideDamage: 1.48,
     centerDamage: 0.82,
   }),
@@ -152,7 +152,7 @@ export const FORMATIONS = Object.freeze({
     range: 0.9,
     incomingDamage: 1.28,
     volleyDamage: 1.42,
-    volleyRadius: 0.76,
+    strikeWidth: 0.76,
   }),
 });
 

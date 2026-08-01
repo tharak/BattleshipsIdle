@@ -60,10 +60,6 @@ const hud = new HudController({
     simulation.restartRun();
     consumeAndDispatchEvents();
   },
-  onPause: () => {
-    simulation.togglePause();
-    consumeAndDispatchEvents();
-  },
   onFormation: (formationId) => {
     const result = simulation.changeFormation(formationId);
     consumeAndDispatchEvents();
