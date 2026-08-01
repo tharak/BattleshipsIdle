@@ -39,6 +39,7 @@ simulation = new GameSimulation({
 });
 const gameRenderer = new GameRenderer(battlefield);
 const audio = new AudioManager({ enabled: true });
+audio.bindUi(document);
 gameRenderer.setScreenShakeEnabled(true);
 
 function consumeAndDispatchEvents() {

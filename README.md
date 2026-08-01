@@ -26,6 +26,7 @@ The interface is designed for touchscreens and also supports mouse input on desk
 The current prototype includes:
 
 - a responsive Three.js battlefield with original procedural ships and effects;
+- tighter portrait framing that keeps approaching fleets visible without a dead top margin;
 - five animated formations and escalating enemy waves;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire and enemy pressure;
@@ -41,7 +42,7 @@ The current prototype includes:
 - capped offline patrol earnings with a clear return report;
 - fleet-size, durability, and visible shield upgrades that update the active formation immediately;
 - unlockable lancer and guardian ship classes with distinct silhouettes and combat stats;
-- original procedural Web Audio cues, camera feedback, and touch-first onboarding.
+- original procedural Web Audio cues for weapons, impacts, shields, destruction, waves, formations, upgrades, alerts, and every interface button;
 
 ## Local development
 

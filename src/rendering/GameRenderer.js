@@ -699,11 +699,12 @@ export class GameRenderer {
     const height = Math.max(1, this.container.clientHeight);
     const aspect = width / height;
     const compactLandscape = height <= 600 && aspect > 1.4;
-    const baseHeight = compactLandscape ? 194 : 166;
-    const baseWidth = 106;
+    const narrowPortrait = aspect < 0.72;
+    const baseHeight = compactLandscape ? 194 : narrowPortrait ? 190 : 166;
+    const baseWidth = narrowPortrait ? 88 : 106;
     const viewWidth = Math.max(baseWidth, baseHeight * aspect);
     const viewHeight = Math.max(baseHeight, baseWidth / aspect);
-    const verticalCenter = compactLandscape ? -18 : 0;
+    const verticalCenter = compactLandscape ? -18 : narrowPortrait ? -10 : 0;
     this.camera.left = -viewWidth / 2;
     this.camera.right = viewWidth / 2;
     this.camera.top = viewHeight / 2 + verticalCenter;
