@@ -6,19 +6,19 @@ import {
 
 const SEVEN_SHIP_LAYOUTS = Object.freeze({
   line: [
-    [-33, -52], [-22, -55], [-11, -57], [0, -63], [11, -57], [22, -55], [33, -52],
+    [-33, -45], [-22, -48], [-11, -50], [0, -56], [11, -50], [22, -48], [33, -45],
   ],
   wedge: [
-    [-31, -46], [-21, -51], [-11, -56], [0, -64], [11, -56], [21, -51], [31, -46],
+    [-31, -39], [-21, -44], [-11, -49], [0, -57], [11, -49], [21, -44], [31, -39],
   ],
   defensiveArc: [
-    [-32, -48], [-27, -56], [-15, -62], [0, -65], [15, -62], [27, -56], [32, -48],
+    [-32, -41], [-27, -49], [-15, -55], [0, -58], [15, -55], [27, -49], [32, -41],
   ],
   splitWings: [
-    [-39, -50], [-31, -57], [-23, -50], [0, -64], [23, -50], [31, -57], [39, -50],
+    [-39, -43], [-31, -50], [-23, -43], [0, -57], [23, -43], [31, -50], [39, -43],
   ],
   denseColumn: [
-    [-4, -40], [4, -46], [-4, -52], [0, -67], [4, -58], [-4, -62], [4, -66],
+    [-4, -33], [4, -39], [-4, -45], [0, -60], [4, -51], [-4, -55], [4, -59],
   ],
 });
 
@@ -50,24 +50,24 @@ export class FormationSystem {
     // Dynamic fallbacks support later fleet-size upgrades without changing the formation contract.
     const commandIndex = Math.floor(count / 2);
     return Array.from({ length: count }, (_, index) => {
-      if (index === commandIndex) return { x: 0, y: -65 };
+      if (index === commandIndex) return { x: 0, y: -58 };
       const sideIndex = index < commandIndex ? index - commandIndex : index - commandIndex;
       const side = Math.sign(sideIndex);
       const rank = Math.abs(sideIndex);
       if (formationId === 'denseColumn') {
-        return { x: side * (3 + (rank % 2) * 2), y: -65 + rank * 5 };
+        return { x: side * (3 + (rank % 2) * 2), y: -58 + rank * 5 };
       }
       if (formationId === 'splitWings') {
-        return { x: side * (20 + rank * 5), y: -57 + (rank % 2) * 7 };
+        return { x: side * (20 + rank * 5), y: -50 + (rank % 2) * 7 };
       }
       if (formationId === 'defensiveArc') {
         const angle = (rank / Math.max(1, commandIndex)) * Math.PI * 0.48;
-        return { x: side * Math.sin(angle) * 35, y: -65 + (1 - Math.cos(angle)) * 20 };
+        return { x: side * Math.sin(angle) * 35, y: -58 + (1 - Math.cos(angle)) * 20 };
       }
       if (formationId === 'wedge') {
-        return { x: side * rank * 9, y: -63 + rank * 5 };
+        return { x: side * rank * 9, y: -56 + rank * 5 };
       }
-      return { x: side * rank * 9, y: -58 + rank * 1.4 };
+      return { x: side * rank * 9, y: -51 + rank * 1.4 };
     });
   }
 

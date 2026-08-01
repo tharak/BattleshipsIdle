@@ -43,11 +43,14 @@ describe('GameSimulation', () => {
     const target = simulation.getSnapshot().enemies[0];
 
     const first = simulation.fireVolley(target.x, target.y);
+    const firedEvent = simulation.consumeEvents().find((event) => event.type === 'volleyFired');
     const salvageAfterHit = simulation.getSnapshot().progression.salvage;
     const second = simulation.fireVolley(target.x, target.y);
 
     expect(first.fired).toBe(true);
     expect(first.preciseHits).toBeGreaterThanOrEqual(1);
+    expect(firedEvent.source).toMatchObject({ x: simulation.getCommandShip().x, y: simulation.getCommandShip().y });
+    expect(firedEvent.sources).toBeUndefined();
     expect(salvageAfterHit).toBeGreaterThan(0);
     expect(second).toMatchObject({ fired: false, reason: 'cooldown' });
     expect(simulation.getSnapshot().volleyRemaining).toBeCloseTo(VOLLEY.cooldown);
@@ -107,6 +110,7 @@ describe('GameSimulation', () => {
     advance(simulation, VOLLEY.cooldown + 0.1);
 
     expect(simulation.getSnapshot().volleyRemaining).toBe(0);
+    expect(simulation.consumeEvents().some((event) => event.type === 'volleyReady')).toBe(true);
     expect(simulation.fireVolley(0, 0).fired).toBe(true);
   });
 
@@ -316,16 +320,4 @@ describe('GameSimulation', () => {
     expect(simulation.friendlies.some((ship) => ship.role === 'guardian')).toBe(true);
   });
 
-  it('pauses combat while settings are open', () => {
-    const simulation = createSimulation();
-    simulation.startRun();
-    advance(simulation, 0.5);
-    const elapsed = simulation.elapsed;
-
-    expect(simulation.openSettings()).toBe(true);
-    advance(simulation, 1);
-    expect(simulation.elapsed).toBe(elapsed);
-    expect(simulation.closeSettings()).toBe(true);
-    expect(simulation.status).toBe('running');
-  });
 });

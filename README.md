@@ -1,6 +1,6 @@
 # Voidline Command
 
-An original, touch-first browser game about commanding a geometric deep-space fleet. Your ships hold the lower edge of a fixed battlefield, automatically engaging incoming formations while you call deliberate coordinated volleys at the most dangerous targets.
+An original, touch-first browser game about commanding a geometric deep-space fleet. Your ships hold the lower edge of a fixed battlefield, automatically engaging incoming formations while you aim the flagship's heavy weapon at the most dangerous targets.
 
 This project uses its own setting, silhouettes, color language, and procedural effects. It does not use names, characters, ship designs, story elements, audio, or visual assets from existing franchises.
 
@@ -11,13 +11,13 @@ The latest deployed build will be available at:
 <https://tharak.github.io/BattleshipsIdle/>
 
 - Use the opening deployment overlay to send the fleet into battle.
-- Tap or click the battlefield when the pointer ring is charged to focus the fleet's fire at that position.
-- Choose formations from the five persistent fleet-diagram buttons along the bottom edge.
-- Friendly ships fire automatically; manual volleys deal concentrated damage and reward timing.
+- Tap or click the battlefield when all charge lights around the flagship are lit to fire at that position.
+- Choose formations from the five persistent fleet-diagram buttons and visible bonus labels along the bottom edge.
+- Friendly ships fire automatically; the manual flagship strike deals concentrated damage and rewards timing.
 - Destroy attackers to earn salvage and advance to harder waves.
-- Boss barriers blunt automatic fire. Land a coordinated volley to expose the hull, then capitalize before it restores.
+- Boss barriers blunt automatic fire. Land a flagship strike to expose the hull, then capitalize before it restores.
 - Protect the command ship. If it is destroyed, use **Restart** to begin a new run.
-- Use the pause and settings controls to suspend combat or adjust procedural audio and screen feedback.
+- Use the pause control when you need to suspend combat.
 
 The interface is designed for touchscreens and also supports mouse input on desktop browsers.
 
@@ -29,14 +29,15 @@ The current prototype includes:
 - five animated formations and escalating enemy waves;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire and enemy pressure;
-- cooldown-limited touch/click coordinated volleys;
-- boss barriers that reward an accurately timed active volley;
+- a cooldown-limited touch/click flagship heavy strike;
+- boss barriers that reward an accurately timed flagship strike;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
-- a pointer-following volley charge ring and an always-visible icon formation bar;
-- a readable HUD for wave, command health, salvage, and boss status;
-- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated volleys;
+- flagship-mounted charge lights, ready audio, and persistent in-world hull and shield bars;
+- an always-visible icon formation bar with concise bonus text;
+- a readable HUD for wave, combined salvage/upgrades, and boss status;
+- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated strikes;
 - ten progressive upgrade branches with visible current/next effects and costs;
-- persistent salvage, upgrade levels, highest-wave progress, settings, and selected formation in `localStorage`;
+- persistent salvage, upgrade levels, highest-wave progress, and selected formation in `localStorage`;
 - capped offline patrol earnings with a clear return report;
 - fleet-size, durability, and visible shield upgrades that update the active formation immediately;
 - unlockable lancer and guardian ship classes with distinct silhouettes and combat stats;
@@ -74,7 +75,6 @@ The production output is written to `dist/`.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.
 - `src/audio/AudioManager.js` synthesizes original combat cues without downloaded assets.
 - `src/input/TargetingInput.js` maps touch and mouse pointer input into battlefield targeting orders.
-- `src/ui/TargetingIndicator.js` keeps volley readiness attached to the mouse or last touch target.
 - `src/ui/HudController.js` owns HUD and deploy, pause, defeat, and restart interactions.
 - `src/main.js` connects the simulation, renderer, input, progression, and UI modules.
 - `tests/` covers deterministic game rules.

@@ -21,11 +21,11 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
     describe: (level) => `+${level * 8}% firing speed`,
   }),
   volleyDamage: Object.freeze({
-    id: 'volleyDamage', name: 'Volley damage', icon: '◎', maxLevel: 16, baseCost: 85, costGrowth: 1.58,
-    describe: (level) => `+${level * 18}% strike damage`,
+    id: 'volleyDamage', name: 'Flagship strike', icon: '◎', maxLevel: 16, baseCost: 85, costGrowth: 1.58,
+    describe: (level) => `+${level * 18}% heavy-weapon damage`,
   }),
   volleyCooldown: Object.freeze({
-    id: 'volleyCooldown', name: 'Volley cooldown', icon: '◴', maxLevel: 8, baseCost: 110, costGrowth: 1.68,
+    id: 'volleyCooldown', name: 'Flagship recharge', icon: '◴', maxLevel: 8, baseCost: 110, costGrowth: 1.68,
     describe: (level) => `${level * 5}% faster recharge`,
   }),
   fleetSize: Object.freeze({

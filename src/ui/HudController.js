@@ -7,19 +7,18 @@ export class HudController {
     onShopOpen,
     onShopClose,
     onUpgrade,
-    onSettingsOpen,
-    onSettingsClose,
-    onSettingChange,
     onOnboardingComplete,
     offlineSummary,
-    settings,
     onboardingComplete,
   }) {
     this.elements = {
       wave: document.querySelector('#wave-value'),
-      health: document.querySelector('#health-value'),
-      healthFill: document.querySelector('#health-fill'),
       currency: document.querySelector('#currency-value'),
+      flagshipVitals: document.querySelector('#flagship-vitals'),
+      flagshipHullFill: document.querySelector('#flagship-hull-fill'),
+      flagshipHullValue: document.querySelector('#flagship-hull-value'),
+      flagshipShieldFill: document.querySelector('#flagship-shield-fill'),
+      flagshipShieldValue: document.querySelector('#flagship-shield-value'),
       message: document.querySelector('#message-banner'),
       pauseButton: document.querySelector('#pause-button'),
       startOverlay: document.querySelector('#start-overlay'),
@@ -29,8 +28,6 @@ export class HudController {
       runSummary: document.querySelector('#run-summary'),
       pauseOverlay: document.querySelector('#pause-overlay'),
       formationOptions: [...document.querySelectorAll('[data-formation]')],
-      shieldMeter: document.querySelector('#shield-meter'),
-      shieldFill: document.querySelector('#shield-fill'),
       shopButton: document.querySelector('#shop-button'),
       startShopButton: document.querySelector('#start-shop-button'),
       gameoverShopButton: document.querySelector('#gameover-shop-button'),
@@ -42,11 +39,6 @@ export class HudController {
       offlineEarned: document.querySelector('#offline-earned'),
       offlineDetail: document.querySelector('#offline-detail'),
       offlineCloseButton: document.querySelector('#offline-close-button'),
-      settingsButton: document.querySelector('#settings-button'),
-      settingsOverlay: document.querySelector('#settings-overlay'),
-      settingsCloseButton: document.querySelector('#settings-close-button'),
-      soundSetting: document.querySelector('#sound-setting'),
-      shakeSetting: document.querySelector('#shake-setting'),
       bossStatus: document.querySelector('#boss-status'),
       bossName: document.querySelector('#boss-name'),
       bossHealthFill: document.querySelector('#boss-health-fill'),
@@ -64,12 +56,6 @@ export class HudController {
     this.elements.startShopButton.addEventListener('click', onShopOpen);
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
     this.elements.shopCloseButton.addEventListener('click', onShopClose);
-    this.elements.settingsButton.addEventListener('click', onSettingsOpen);
-    this.elements.settingsCloseButton.addEventListener('click', onSettingsClose);
-    this.elements.soundSetting.checked = settings.sound;
-    this.elements.shakeSetting.checked = settings.screenShake;
-    this.elements.soundSetting.addEventListener('change', () => onSettingChange('sound', this.elements.soundSetting.checked));
-    this.elements.shakeSetting.addEventListener('change', () => onSettingChange('screenShake', this.elements.shakeSetting.checked));
     for (const option of this.elements.formationOptions) {
       option.addEventListener('click', () => onFormation(option.dataset.formation));
     }
@@ -100,20 +86,32 @@ export class HudController {
     this.elements.gameoverOverlay.classList.remove('overlay--visible');
   }
 
-  update(snapshot) {
-    const healthRatio = Math.max(0, snapshot.commandHealth / snapshot.commandMaxHealth);
-    const healthPercent = Math.round(healthRatio * 100);
+  update(snapshot, flagshipScreenPosition = null) {
     this.elements.wave.textContent = String(Math.max(1, snapshot.wave));
-    this.elements.health.textContent = String(healthPercent);
-    this.elements.healthFill.style.transform = `scaleX(${healthRatio})`;
-    this.elements.healthFill.style.backgroundColor = healthRatio < 0.3 ? 'var(--danger)' : 'var(--cyan)';
     this.elements.currency.textContent = snapshot.progression.salvage.toLocaleString();
+    this.elements.shopButton.setAttribute(
+      'aria-label',
+      `Open fleet upgrades. ${snapshot.progression.salvage.toLocaleString()} salvage available`,
+    );
     this.elements.shopCurrency.textContent = snapshot.progression.currency.toLocaleString();
-    const shieldRatio = snapshot.commandMaxShield > 0
-      ? Math.max(0, snapshot.commandShield / snapshot.commandMaxShield)
+    const hullPercent = Math.round((snapshot.commandHealth / Math.max(1, snapshot.commandMaxHealth)) * 100);
+    const shieldPercent = snapshot.commandMaxShield > 0
+      ? Math.round((snapshot.commandShield / snapshot.commandMaxShield) * 100)
       : 0;
-    this.elements.shieldMeter.hidden = snapshot.commandMaxShield <= 0;
-    this.elements.shieldFill.style.transform = `scaleX(${shieldRatio})`;
+    this.elements.flagshipVitals.hidden = !['running', 'paused'].includes(snapshot.status)
+      || !flagshipScreenPosition;
+    if (flagshipScreenPosition) {
+      this.elements.flagshipVitals.style.left = `${flagshipScreenPosition.x}px`;
+      this.elements.flagshipVitals.style.top = `${flagshipScreenPosition.y}px`;
+    }
+    this.elements.flagshipHullFill.style.transform = `scaleX(${Math.max(0, hullPercent) / 100})`;
+    this.elements.flagshipShieldFill.style.transform = `scaleX(${Math.max(0, shieldPercent) / 100})`;
+    this.elements.flagshipHullValue.textContent = `${hullPercent}%`;
+    this.elements.flagshipShieldValue.textContent = `${shieldPercent}%`;
+    this.elements.flagshipVitals.setAttribute(
+      'aria-label',
+      `Flagship hull ${hullPercent} percent, shield ${shieldPercent} percent`,
+    );
     for (const option of this.elements.formationOptions) {
       option.setAttribute('aria-pressed', String(option.dataset.formation === snapshot.formation.currentId));
       option.disabled = snapshot.status === 'gameOver'
@@ -132,7 +130,7 @@ export class HudController {
       this.elements.bossStatus.classList.toggle('is-exposed', exposed);
       this.elements.bossBarrierState.textContent = exposed
         ? `Hull exposed // ${boss.exposedRemaining.toFixed(1)}s`
-        : 'Barrier active // mark with volley';
+        : 'Barrier active // flagship strike required';
     }
   }
 
@@ -151,7 +149,7 @@ export class HudController {
         if (event.preciseHits > 0) {
           this.showMessage(`Precision lock // ${event.preciseHits} critical`, 1.1);
         } else if (event.hits === 0) {
-          this.showMessage('Volley missed // solution lost', 0.9);
+          this.showMessage('Flagship strike missed // solution lost', 0.9);
         }
       } else if (event.type === 'formationChanged') {
         this.showMessage(`${event.formation.name} // ${event.formation.mechanic}`, 1.25);
@@ -162,16 +160,14 @@ export class HudController {
         if (this.lastSnapshot) this.renderUpgrades(this.lastSnapshot, true);
       } else if (event.type === 'shopClosed') {
         this.elements.shopOverlay.hidden = true;
-      } else if (event.type === 'settingsOpened') {
-        this.elements.settingsOverlay.hidden = false;
-      } else if (event.type === 'settingsClosed') {
-        this.elements.settingsOverlay.hidden = true;
       } else if (event.type === 'bossWaveStarted') {
-        this.showMessage(`${event.name} // coordinated strike required`, 2.2);
+        this.showMessage(`${event.name} // flagship strike required`, 2.2);
       } else if (event.type === 'bossExposed') {
         this.showMessage('Barrier collapsed // focus fire', 1.4);
       } else if (event.type === 'bossBarrierRestored') {
-        this.showMessage('Barrier restored // recharge volley', 1.2);
+        this.showMessage('Barrier restored // flagship recharging', 1.2);
+      } else if (event.type === 'volleyReady') {
+        this.showMessage('Flagship weapon // ready', 1.1);
       } else if (event.type === 'paused') {
         this.setPaused(true);
       } else if (event.type === 'resumed') {
@@ -266,7 +262,7 @@ export class HudController {
     this.coachTimer = window.setTimeout(() => {
       if (this.onboardingComplete) return;
       this.elements.coachmarkTitle.textContent = 'Your command matters';
-      this.elements.coachmarkDetail.textContent = 'Tap a clustered threat when the coordinated-volley ring is charged.';
+      this.elements.coachmarkDetail.textContent = 'Tap a clustered threat when the flagship charge lights are full.';
     }, 2800);
   }
 

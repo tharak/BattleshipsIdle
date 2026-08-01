@@ -5,13 +5,11 @@ import { GameRenderer } from './rendering/GameRenderer.js';
 import { HudController } from './ui/HudController.js';
 import { PersistenceStore } from './persistence/PersistenceStore.js';
 import { AudioManager } from './audio/AudioManager.js';
-import { TargetingIndicator } from './ui/TargetingIndicator.js';
 
 const FIXED_STEP = 1 / 60;
 const MAX_FRAME_CATCHUP = 0.2;
 
 const battlefield = document.querySelector('#battlefield');
-const gameShell = document.querySelector('#game-shell');
 const persistence = new PersistenceStore(window.localStorage);
 const loadedSave = persistence.load();
 let persistentState = loadedSave.state;
@@ -40,12 +38,8 @@ simulation = new GameSimulation({
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);
-const audio = new AudioManager({ enabled: persistentState.settings.sound });
-gameRenderer.setScreenShakeEnabled(persistentState.settings.screenShake);
-const targetingIndicator = new TargetingIndicator({
-  element: document.querySelector('#targeting-indicator'),
-  container: gameShell,
-});
+const audio = new AudioManager({ enabled: true });
+gameRenderer.setScreenShakeEnabled(true);
 
 function consumeAndDispatchEvents() {
   const events = simulation.consumeEvents();
@@ -91,28 +85,11 @@ const hud = new HudController({
     persistNow();
     return { ...result, snapshot: simulation.getSnapshot() };
   },
-  onSettingsOpen: () => {
-    const opened = simulation.openSettings();
-    consumeAndDispatchEvents();
-    return opened;
-  },
-  onSettingsClose: () => {
-    const closed = simulation.closeSettings();
-    consumeAndDispatchEvents();
-    return closed;
-  },
-  onSettingChange: (key, enabled) => {
-    persistentState.settings = { ...persistentState.settings, [key]: enabled };
-    if (key === 'sound') audio.setEnabled(enabled);
-    if (key === 'screenShake') gameRenderer.setScreenShakeEnabled(enabled);
-    persistNow();
-  },
   onOnboardingComplete: () => {
     persistentState.onboardingComplete = true;
     persistNow();
   },
   offlineSummary: loadedSave.offline,
-  settings: persistentState.settings,
   onboardingComplete: persistentState.onboardingComplete,
 });
 
@@ -122,10 +99,8 @@ const targetingInput = new TargetingInput({
   onTarget: ({ x, y }) => {
     const result = simulation.fireVolley(x, y);
     consumeAndDispatchEvents();
-    targetingIndicator.reflectTargetResult(result);
     return result;
   },
-  onPointerChange: (pointer) => targetingIndicator.setPointer(pointer),
 });
 
 let previousTime = performance.now();
@@ -145,11 +120,13 @@ function frame(now) {
     consumeAndDispatchEvents();
     const snapshot = simulation.getSnapshot();
     gameRenderer.sync(snapshot, rawDelta);
-    hud.update(snapshot);
+    const flagship = snapshot.friendlies.find((ship) => ship.role === 'command');
+    const flagshipVitalsPosition = flagship
+      ? gameRenderer.worldToScreen(flagship.x, flagship.y - 5.3, 1.5)
+      : null;
+    hud.update(snapshot, flagshipVitalsPosition);
     hud.tick(rawDelta);
-    const targetingActive = snapshot.status === 'running' && snapshot.waveIntermission <= 0;
-    targetingIndicator.setState({ charge: snapshot.volleyCharge, active: targetingActive });
-    targetingInput.setEnabled(targetingActive);
+    targetingInput.setEnabled(snapshot.status === 'running' && snapshot.waveIntermission <= 0);
   }
 
   gameRenderer.render();
@@ -166,10 +143,7 @@ function handleVisibilityChange() {
   }
 }
 
-window.addEventListener('resize', () => {
-  gameRenderer.resize();
-  targetingIndicator.resize();
-}, { passive: true });
+window.addEventListener('resize', () => gameRenderer.resize(), { passive: true });
 window.addEventListener('pagehide', persistNow);
 document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -178,7 +152,12 @@ globalThis.__VOIDLINE__ = Object.freeze({
   getSnapshot: () => simulation.getSnapshot(),
 });
 
-gameRenderer.sync(simulation.getSnapshot(), 0);
-hud.update(simulation.getSnapshot());
+const initialSnapshot = simulation.getSnapshot();
+gameRenderer.sync(initialSnapshot, 0);
+const initialFlagship = initialSnapshot.friendlies.find((ship) => ship.role === 'command');
+hud.update(
+  initialSnapshot,
+  initialFlagship ? gameRenderer.worldToScreen(initialFlagship.x, initialFlagship.y - 5.3, 1.5) : null,
+);
 gameRenderer.render();
 requestAnimationFrame(frame);

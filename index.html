@@ -13,12 +13,15 @@
   </head>
   <body>
     <main id="game-shell" aria-label="Voidline Command game">
-      <div id="battlefield" aria-label="Fleet battlefield. Tap or click to order a coordinated volley."></div>
-      <div id="targeting-indicator" class="targeting-indicator" aria-hidden="true" hidden>
-        <svg viewBox="0 0 52 52">
-          <circle class="targeting-indicator__track" cx="26" cy="26" r="20"></circle>
-          <circle class="targeting-indicator__charge" data-targeting-charge cx="26" cy="26" r="20"></circle>
-        </svg>
+      <div id="battlefield" aria-label="Fleet battlefield. Tap or click to aim the flagship strike."></div>
+
+      <div id="flagship-vitals" class="flagship-vitals" role="status" aria-label="Flagship hull 100 percent, shield 0 percent" hidden>
+        <div class="flagship-vitals__row flagship-vitals__row--hull">
+          <span>HP</span><i><b id="flagship-hull-fill"></b></i><output id="flagship-hull-value">100%</output>
+        </div>
+        <div class="flagship-vitals__row flagship-vitals__row--shield">
+          <span>SH</span><i><b id="flagship-shield-fill"></b></i><output id="flagship-shield-value">0%</output>
+        </div>
       </div>
 
       <header class="hud hud--top" aria-label="Fleet status">
@@ -35,27 +38,15 @@
             <dt>Wave</dt>
             <dd id="wave-value">1</dd>
           </div>
-          <div class="stat stat--wide">
-            <dt>Command integrity</dt>
-            <dd><span id="health-value">100</span><span class="stat__unit">%</span></dd>
-            <div class="meter meter--health" aria-hidden="true"><i id="health-fill"></i></div>
-            <div id="shield-meter" class="meter meter--shield" aria-hidden="true" hidden><i id="shield-fill"></i></div>
-          </div>
-          <div class="stat">
-            <dt>Salvage</dt>
-            <dd id="currency-value">0</dd>
-          </div>
         </dl>
 
         <div class="hud-actions">
-          <button id="shop-button" class="icon-button" type="button" aria-label="Open fleet upgrades">
-            <span class="button-glyph" aria-hidden="true">UP</span>
+          <button id="shop-button" class="upgrade-wallet-button" type="button" aria-label="Open fleet upgrades. 0 salvage available">
+            <span class="button-glyph">UPGRADE</span>
+            <strong><span id="currency-value">0</span><span aria-hidden="true"> ◇</span></strong>
           </button>
           <button id="pause-button" class="icon-button" type="button" aria-label="Pause game" disabled>
             <span aria-hidden="true">Ⅱ</span>
-          </button>
-          <button id="settings-button" class="icon-button" type="button" aria-label="Open settings">
-            <span aria-hidden="true">⚙</span>
           </button>
         </div>
       </header>
@@ -63,7 +54,7 @@
       <section id="boss-status" class="boss-status" aria-live="polite" hidden>
         <div><span class="eyebrow eyebrow--danger">MAJOR CONTACT</span><strong id="boss-name">Rift bastion</strong></div>
         <div class="boss-meter" aria-hidden="true"><i id="boss-health-fill"></i></div>
-        <span id="boss-barrier-state">Barrier active // mark with volley</span>
+        <span id="boss-barrier-state">Barrier active // flagship strike required</span>
       </section>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
@@ -75,6 +66,7 @@
               <circle class="formation-icon__command" cx="26" cy="17" r="3"></circle>
               <circle cx="33" cy="17" r="2.4"></circle><circle cx="40" cy="17" r="2.4"></circle><circle cx="47" cy="17" r="2.4"></circle>
             </svg>
+            <small>+12% RANGE</small>
           </button>
           <button class="formation-option" type="button" data-formation="wedge" data-tooltip="Wedge · +18% auto damage" aria-label="Wedge formation. Forward pressure and 18 percent more automatic damage" aria-pressed="false">
             <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
@@ -83,6 +75,7 @@
               <circle cx="39" cy="14" r="2.4"></circle><circle cx="20" cy="23" r="2.4"></circle><circle cx="32" cy="23" r="2.4"></circle>
               <circle class="formation-icon__command" cx="26" cy="31" r="3"></circle>
             </svg>
+            <small>+18% DAMAGE</small>
           </button>
           <button class="formation-option" type="button" data-formation="defensiveArc" data-tooltip="Defensive arc · −32% incoming" aria-label="Defensive arc formation. Command shelter and 32 percent less incoming damage" aria-pressed="false">
             <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
@@ -91,6 +84,7 @@
               <circle cx="31" cy="7" r="2.4"></circle><circle cx="40" cy="13" r="2.4"></circle><circle cx="47" cy="22" r="2.4"></circle>
               <circle class="formation-icon__command" cx="26" cy="27" r="3"></circle>
             </svg>
+            <small>−32% INCOMING</small>
           </button>
           <button class="formation-option" type="button" data-formation="splitWings" data-tooltip="Split wings · +48% side damage" aria-label="Split wings formation. Flank hunting and 48 percent more side damage" aria-pressed="false">
             <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
@@ -99,14 +93,16 @@
               <circle cx="46" cy="6" r="2.4"></circle><circle cx="39" cy="16" r="2.4"></circle><circle cx="32" cy="27" r="2.4"></circle>
               <circle class="formation-icon__command" cx="26" cy="30" r="3"></circle>
             </svg>
+            <small>+48% FLANK</small>
           </button>
-          <button class="formation-option" type="button" data-formation="denseColumn" data-tooltip="Dense column · +42% volley damage" aria-label="Dense column formation. Synchronized strike and 42 percent more volley damage" aria-pressed="false">
+          <button class="formation-option" type="button" data-formation="denseColumn" data-tooltip="Dense column · +42% strike damage" aria-label="Dense column formation. Synchronized strike and 42 percent more flagship strike damage" aria-pressed="false">
             <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
               <path class="formation-icon__guide" d="M26 3V31"></path>
               <circle cx="26" cy="3" r="2.4"></circle><circle cx="26" cy="8" r="2.4"></circle><circle cx="26" cy="13" r="2.4"></circle>
               <circle cx="26" cy="18" r="2.4"></circle><circle cx="26" cy="23" r="2.4"></circle><circle cx="26" cy="28" r="2.4"></circle>
               <circle class="formation-icon__command" cx="26" cy="32" r="3"></circle>
             </svg>
+            <small>+42% STRIKE</small>
           </button>
         </div>
       </section>
@@ -123,11 +119,11 @@
           <span class="eyebrow eyebrow--bright">TACTICAL LINK // ONLINE</span>
           <h1 id="start-title">Hold the voidline.</h1>
           <p>
-            Your fleet fires automatically. Read the enemy approach, then tap or click a cluster to unleash a synchronized strike.
+            Your fleet fires automatically. Read the enemy approach, then tap or click a cluster to unleash the flagship's heavy strike.
           </p>
           <div class="control-primer" aria-label="Controls">
-            <div><span class="control-primer__icon">◎</span><span>Tap to mark a firing solution</span></div>
-            <div><span class="control-primer__icon">⌁</span><span>The targeting ring shows volley readiness</span></div>
+            <div><span class="control-primer__icon">◎</span><span>Tap to aim the flagship's heavy weapon</span></div>
+            <div><span class="control-primer__icon">⌁</span><span>Charge lights around the flagship show readiness</span></div>
           </div>
           <button id="start-button" class="primary-button" type="button">
             <span>Deploy fleet</span><span aria-hidden="true">→</span>
@@ -171,24 +167,6 @@
           <button id="offline-close-button" class="primary-button" type="button">
             <span>Collect report</span><span aria-hidden="true">→</span>
           </button>
-        </div>
-      </section>
-
-      <section id="settings-overlay" class="modal-layer" aria-labelledby="settings-title" hidden>
-        <div class="settings-panel">
-          <header class="settings-header">
-            <div><span class="eyebrow eyebrow--bright">COMMAND SYSTEMS</span><h2 id="settings-title">Settings</h2></div>
-            <button id="settings-close-button" class="icon-button" type="button" aria-label="Close settings">×</button>
-          </header>
-          <label class="setting-row" for="sound-setting">
-            <span><strong>Procedural audio</strong><small>Original synthesized weapon and impact cues</small></span>
-            <input id="sound-setting" type="checkbox" />
-          </label>
-          <label class="setting-row" for="shake-setting">
-            <span><strong>Screen feedback</strong><small>Camera motion on heavy impacts</small></span>
-            <input id="shake-setting" type="checkbox" />
-          </label>
-          <p class="settings-note">Progress is stored only in this browser. No account or backend is required.</p>
         </div>
       </section>
 

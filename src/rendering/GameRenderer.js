@@ -124,6 +124,7 @@ export class GameRenderer {
       projectileGeometry: new THREE.CapsuleGeometry(0.25, 1.7, 2, 6),
       haloGeometry: new THREE.RingGeometry(2.2, 2.8, 18),
       ringGeometry: new THREE.RingGeometry(0.86, 1, 32),
+      chargeNodeGeometry: new THREE.CircleGeometry(0.24, 8),
     };
   }
 
@@ -355,21 +356,44 @@ export class GameRenderer {
       group.add(shieldRing);
     }
 
-    const healthGroup = new THREE.Group();
-    const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.34), this.shared.healthBackMaterial);
-    const healthFill = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.2, 0.2),
-      friendly ? this.shared.healthMaterial : this.shared.enemyHealthMaterial,
-    );
-    healthFill.position.z = 0.02;
-    healthGroup.add(healthBack, healthFill);
-    healthGroup.position.set(0, friendly ? -3.6 : 3.4, 1.4);
-    healthGroup.userData.fill = healthFill;
-    group.add(healthGroup);
+    let healthGroup = null;
+    let chargeGroup = null;
+    if (command) {
+      chargeGroup = new THREE.Group();
+      const nodeCount = 12;
+      for (let index = 0; index < nodeCount; index += 1) {
+        const angle = (index / nodeCount) * Math.PI * 2 + Math.PI / 2;
+        const material = new THREE.MeshBasicMaterial({
+          color: COLORS.friendly,
+          transparent: true,
+          opacity: 0.14,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        material.userData.disposeWithShip = true;
+        const node = new THREE.Mesh(this.shared.chargeNodeGeometry, material);
+        node.position.set(Math.cos(angle) * 4.05, Math.sin(angle) * 4.05, 1.15);
+        chargeGroup.add(node);
+      }
+      group.add(chargeGroup);
+    } else {
+      healthGroup = new THREE.Group();
+      const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.34), this.shared.healthBackMaterial);
+      const healthFill = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 0.2),
+        friendly ? this.shared.healthMaterial : this.shared.enemyHealthMaterial,
+      );
+      healthFill.position.z = 0.02;
+      healthGroup.add(healthBack, healthFill);
+      healthGroup.position.set(0, friendly ? -3.6 : 3.4, 1.4);
+      healthGroup.userData.fill = healthFill;
+      group.add(healthGroup);
+    }
 
     group.scale.setScalar(scale);
     group.userData.baseScale = scale;
     group.userData.health = healthGroup;
+    group.userData.chargeGroup = chargeGroup;
     group.userData.halo = halo;
     group.userData.shieldRing = shieldRing;
     group.userData.entity = entity;
@@ -379,7 +403,7 @@ export class GameRenderer {
 
   sync(snapshot, deltaSeconds) {
     this.clockTime += deltaSeconds;
-    this.syncEntities([...snapshot.friendlies, ...snapshot.enemies]);
+    this.syncEntities([...snapshot.friendlies, ...snapshot.enemies], snapshot.volleyCharge);
     this.syncProjectiles(snapshot.projectiles);
     this.updateEffects(deltaSeconds);
     this.updateTargetMarker(deltaSeconds);
@@ -400,7 +424,7 @@ export class GameRenderer {
       + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
   }
 
-  syncEntities(entities) {
+  syncEntities(entities, volleyCharge = 0) {
     const activeIds = new Set();
     for (const entity of entities) {
       activeIds.add(entity.id);
@@ -411,10 +435,22 @@ export class GameRenderer {
       }
       group.position.set(entity.x, entity.y, 0);
       const healthRatio = Math.max(0.001, entity.health / entity.maxHealth);
-      const healthFill = group.userData.health.userData.fill;
-      healthFill.scale.x = healthRatio;
-      healthFill.position.x = -2.1 * (1 - healthRatio);
-      group.userData.health.visible = healthRatio < 0.995;
+      if (group.userData.health) {
+        const healthFill = group.userData.health.userData.fill;
+        healthFill.scale.x = healthRatio;
+        healthFill.position.x = -2.1 * (1 - healthRatio);
+        group.userData.health.visible = healthRatio < 0.995;
+      }
+      if (group.userData.chargeGroup) {
+        const litNodes = Math.round(Math.max(0, Math.min(1, volleyCharge)) * group.userData.chargeGroup.children.length);
+        group.userData.chargeGroup.children.forEach((node, index) => {
+          const charged = index < litNodes;
+          node.material.opacity = charged ? 0.92 : 0.12;
+          node.scale.setScalar(charged ? 1.1 : 0.82);
+        });
+        group.userData.chargeGroup.rotation.z -= 0.003 + volleyCharge * 0.004;
+        this.shared.commandMaterial.emissiveIntensity = 0.58 + volleyCharge * 0.55;
+      }
       group.userData.halo.rotation.z += 0.012;
       if (entity.boss) {
         const exposed = entity.exposedRemaining > 0;
@@ -429,7 +465,10 @@ export class GameRenderer {
           (entity.role === 'command' ? 1.75 : 1.28) * (0.9 + shieldRatio * 0.1),
         );
       }
-      const pulse = 1 + Math.sin(this.clockTime * 3 + (entity.slot ?? 0)) * 0.025;
+      const readyPulse = entity.role === 'command' && volleyCharge >= 0.999
+        ? Math.sin(this.clockTime * 5) * 0.035
+        : 0;
+      const pulse = 1 + Math.sin(this.clockTime * 3 + (entity.slot ?? 0)) * 0.025 + readyPulse;
       group.scale.setScalar(group.userData.baseScale * pulse);
     }
 
@@ -475,10 +514,12 @@ export class GameRenderer {
         this.shake = Math.max(this.shake, event.role === 'command' ? 3.5 : 1.6);
       } else if (event.type === 'volleyFired') {
         this.showTarget(event.x, event.y, true, event.radius);
-        this.spawnVolleyBeams(event);
-        this.shake = Math.max(this.shake, 1.7);
+        this.spawnFlagshipStrike(event);
+        this.shake = Math.max(this.shake, 2.8);
       } else if (event.type === 'volleyRejected') {
         this.showTarget(event.x, event.y, false);
+      } else if (event.type === 'volleyReady') {
+        this.spawnImpact(event.x, event.y, COLORS.command, 1.9);
       } else if (event.type === 'breach') {
         this.spawnImpact(event.x, event.y, COLORS.enemy, 2.5);
         this.shake = Math.max(this.shake, 2.2);
@@ -515,24 +556,27 @@ export class GameRenderer {
     this.effects.push({ type: 'impact', object: group });
   }
 
-  spawnVolleyBeams(event) {
-    const material = new THREE.LineBasicMaterial({
-      color: COLORS.friendlyCore,
-      transparent: true,
-      opacity: 0.94,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const points = [];
-    for (const source of event.sources) {
-      points.push(
-        new THREE.Vector3(source.x, source.y, 3.5),
-        new THREE.Vector3(event.x, event.y, 3.5),
-      );
-    }
-    const beam = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), material);
-    this.scene.add(beam);
-    this.effects.push({ type: 'beam', object: beam, life: 0.28, maxLife: 0.28 });
+  spawnFlagshipStrike(event) {
+    const dx = event.x - event.source.x;
+    const dy = event.y - event.source.y;
+    const length = Math.hypot(dx, dy);
+    const group = new THREE.Group();
+    const materials = [
+      new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.34, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffe4a8, transparent: true, opacity: 0.88, blending: THREE.AdditiveBlending, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }),
+    ];
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(7.2, length), materials[0]);
+    const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.35, length), materials[1]);
+    const core = new THREE.Mesh(new THREE.PlaneGeometry(0.62, length), materials[2]);
+    group.add(glow, beam, core);
+    group.position.set((event.source.x + event.x) / 2, (event.source.y + event.y) / 2, 4.2);
+    group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+    group.userData.materials = materials;
+    this.scene.add(group);
+    this.effects.push({ type: 'flagshipStrike', object: group, life: 0.72, maxLife: 0.72 });
+    this.spawnImpact(event.source.x, event.source.y, COLORS.command, 2.7);
+    this.spawnImpact(event.x, event.y, COLORS.friendly, 4.4);
   }
 
   spawnFormationTrails(paths) {
@@ -568,6 +612,18 @@ export class GameRenderer {
         for (const material of group.userData.materials) material.opacity = ratio;
         if (group.userData.life <= 0) {
           this.effectPool.release(group);
+        } else {
+          remaining.push(effect);
+        }
+      } else if (effect.type === 'flagshipStrike') {
+        effect.life -= dt;
+        const ratio = Math.max(0, effect.life / effect.maxLife);
+        effect.object.userData.materials[0].opacity = ratio * 0.34;
+        effect.object.userData.materials[1].opacity = ratio * 0.88;
+        effect.object.userData.materials[2].opacity = ratio;
+        effect.object.scale.x = 1 + (1 - ratio) * 0.45;
+        if (effect.life <= 0) {
+          this.disposeTransientEffect(effect.object);
         } else {
           remaining.push(effect);
         }
@@ -625,18 +681,29 @@ export class GameRenderer {
     return { x: this.worldPoint.x, y: this.worldPoint.y };
   }
 
+  worldToScreen(x, y, z = 0) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const point = new THREE.Vector3(x, y, z).project(this.camera);
+    return {
+      x: rect.left + (point.x + 1) * rect.width * 0.5,
+      y: rect.top + (1 - point.y) * rect.height * 0.5,
+    };
+  }
+
   resize() {
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
     const aspect = width / height;
-    const baseHeight = 166;
+    const compactLandscape = height <= 600 && aspect > 1.4;
+    const baseHeight = compactLandscape ? 194 : 166;
     const baseWidth = 106;
     const viewWidth = Math.max(baseWidth, baseHeight * aspect);
     const viewHeight = Math.max(baseHeight, baseWidth / aspect);
+    const verticalCenter = compactLandscape ? -18 : 0;
     this.camera.left = -viewWidth / 2;
     this.camera.right = viewWidth / 2;
-    this.camera.top = viewHeight / 2;
-    this.camera.bottom = -viewHeight / 2;
+    this.camera.top = viewHeight / 2 + verticalCenter;
+    this.camera.bottom = -viewHeight / 2 + verticalCenter;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height, false);
@@ -645,6 +712,14 @@ export class GameRenderer {
   setScreenShakeEnabled(enabled) {
     this.screenShakeEnabled = Boolean(enabled);
     if (!this.screenShakeEnabled) this.shake = 0;
+  }
+
+  disposeTransientEffect(object) {
+    this.scene.remove(object);
+    object.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+    });
+    for (const material of object.userData.materials ?? []) material.dispose();
   }
 
   resetScene() {
@@ -658,6 +733,8 @@ export class GameRenderer {
     for (const effect of this.effects) {
       if (effect.type === 'impact') {
         this.effectPool.release(effect.object);
+      } else if (effect.type === 'flagshipStrike') {
+        this.disposeTransientEffect(effect.object);
       } else {
         this.scene.remove(effect.object);
         effect.object.geometry.dispose();
@@ -675,9 +752,11 @@ export class GameRenderer {
         this.shared.haloGeometry,
         this.shared.projectileGeometry,
         this.shared.ringGeometry,
+        this.shared.chargeNodeGeometry,
       ].includes(child.geometry)) {
         child.geometry.dispose();
       }
+      if (child.material?.userData?.disposeWithShip) child.material.dispose();
     });
   }
 }

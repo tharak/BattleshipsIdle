@@ -67,6 +67,53 @@ button:focus-visible {
   cursor: crosshair;
 }
 
+.flagship-vitals {
+  position: absolute;
+  z-index: 4;
+  width: 106px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.flagship-vitals__row {
+  display: grid;
+  grid-template-columns: 14px 1fr 25px;
+  align-items: center;
+  gap: 3px;
+  height: 9px;
+  color: var(--gold);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 6px currentColor;
+}
+
+.flagship-vitals__row--shield { color: #72a7ff; }
+
+.flagship-vitals__row output {
+  color: currentColor;
+  font: inherit;
+  text-align: right;
+}
+
+.flagship-vitals__row i {
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid currentColor;
+  background: rgba(5, 11, 27, 0.82);
+  box-shadow: 0 0 6px color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.flagship-vitals__row b {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
 .scanlines {
   position: absolute;
   z-index: 2;
@@ -108,6 +155,7 @@ button:focus-visible {
 .brand-lockup,
 .stat-strip,
 .formation-bar,
+.upgrade-wallet-button,
 .icon-button,
 .pause-card {
   border: 1px solid var(--panel-line);
@@ -263,6 +311,27 @@ button:focus-visible {
   cursor: pointer;
 }
 
+.upgrade-wallet-button {
+  display: grid;
+  width: 118px;
+  height: 48px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.upgrade-wallet-button strong {
+  color: var(--gold);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 16px;
+  text-align: right;
+}
+
 .button-glyph {
   color: var(--cyan);
   font-size: 10px;
@@ -277,7 +346,7 @@ button:focus-visible {
 
 .formation-bar {
   display: grid;
-  width: min(390px, calc(100vw - 32px));
+  width: min(430px, calc(100vw - 32px));
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   padding: 7px;
@@ -289,13 +358,14 @@ button:focus-visible {
   position: relative;
   display: grid;
   min-width: 0;
-  height: 54px;
+  height: 70px;
   padding: 4px;
   border: 1px solid rgba(141, 162, 185, 0.15);
   color: #7e9caf;
   background: rgba(14, 28, 51, 0.72);
   cursor: pointer;
-  place-items: center;
+  align-content: center;
+  justify-items: center;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
@@ -314,7 +384,7 @@ button:focus-visible {
 
 .formation-icon {
   width: 52px;
-  height: 34px;
+  height: 32px;
   overflow: visible;
   fill: currentColor;
 }
@@ -329,6 +399,18 @@ button:focus-visible {
 
 .formation-icon__command {
   fill: var(--gold);
+}
+
+.formation-option small {
+  display: block;
+  margin-top: 3px;
+  color: currentColor;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .formation-option::after {
@@ -363,59 +445,6 @@ button:focus-visible {
     opacity: 1;
     transform: translate(-50%, 0);
   }
-}
-
-.targeting-indicator {
-  position: absolute;
-  z-index: 4;
-  width: 52px;
-  height: 52px;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  filter: drop-shadow(0 0 7px rgba(84, 244, 235, 0.26));
-}
-
-.targeting-indicator svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  transform: rotate(-90deg);
-}
-
-.targeting-indicator circle {
-  fill: none;
-  stroke-width: 2.4;
-}
-
-.targeting-indicator__track {
-  stroke: rgba(141, 162, 185, 0.28);
-}
-
-.targeting-indicator__charge {
-  stroke: rgba(84, 244, 235, 0.72);
-  stroke-dasharray: 125.664;
-  stroke-dashoffset: 0;
-  stroke-linecap: round;
-  transition: stroke 120ms ease, stroke-dashoffset 80ms linear;
-}
-
-.targeting-indicator.is-ready .targeting-indicator__charge {
-  stroke: var(--cyan-soft);
-  filter: drop-shadow(0 0 4px var(--cyan));
-  animation: targeting-ready 1.35s ease-in-out infinite;
-}
-
-.targeting-indicator.is-rejected .targeting-indicator__charge {
-  stroke: var(--danger);
-  animation: targeting-rejected 320ms ease-out;
-}
-
-@keyframes targeting-ready {
-  50% { stroke-width: 3.4; }
-}
-
-@keyframes targeting-rejected {
-  50% { stroke-width: 5; }
 }
 
 .message-banner {
@@ -745,8 +774,7 @@ button:focus-visible {
 
 .boss-status strong,
 .coachmark strong,
-.settings-panel h2,
-.setting-row strong {
+.upgrade-wallet-button strong {
   font-family: "Chakra Petch", sans-serif;
 }
 
@@ -776,23 +804,6 @@ button:focus-visible {
 
 .coachmark strong { font-size: 16px; text-transform: uppercase; }
 .coachmark > span:last-child { color: #aabed0; font-size: 11px; line-height: 1.45; }
-
-.settings-panel {
-  width: min(500px, 100%);
-  padding: 22px;
-  border: 1px solid rgba(84, 244, 235, 0.3);
-  background: rgba(5, 12, 29, 0.98);
-  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.62);
-}
-
-.settings-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.settings-header h2 { margin: 2px 0 0; font-size: 34px; }
-.setting-row { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--panel-line); cursor: pointer; }
-.setting-row span { display: grid; gap: 3px; }
-.setting-row strong { font-size: 15px; }
-.setting-row small, .settings-note { color: var(--muted); font-size: 11px; line-height: 1.4; }
-.setting-row input { width: 24px; height: 24px; accent-color: var(--cyan); }
-.settings-note { margin: 14px 0 0; }
 
 [hidden] {
   display: none !important;
@@ -838,6 +849,21 @@ button:focus-visible {
     height: 46px;
   }
 
+  .upgrade-wallet-button {
+    width: 101px;
+    height: 46px;
+    gap: 5px;
+    padding: 0 8px;
+  }
+
+  .upgrade-wallet-button strong {
+    font-size: 14px;
+  }
+
+  .upgrade-wallet-button .button-glyph {
+    font-size: 8px;
+  }
+
   .hud-actions {
     gap: 4px;
   }
@@ -847,20 +873,22 @@ button:focus-visible {
   }
 
   .formation-bar {
-    width: min(100%, 356px);
+    width: min(100%, 370px);
     gap: 4px;
     padding: 5px;
   }
 
   .formation-option {
-    height: 52px;
+    height: 64px;
     padding: 2px;
   }
 
   .formation-icon {
     width: 44px;
-    height: 30px;
+    height: 28px;
   }
+
+  .formation-option small { font-size: 7px; }
 
   .message-banner {
     top: 14%;
@@ -925,11 +953,11 @@ button:focus-visible {
   }
 
   .formation-option {
-    height: 42px;
+    height: 54px;
   }
 
   .formation-icon {
-    height: 26px;
+    height: 24px;
   }
 
   .overlay__panel {

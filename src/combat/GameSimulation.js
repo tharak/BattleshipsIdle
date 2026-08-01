@@ -210,7 +210,12 @@ export class GameSimulation {
     }
     if (this.status !== 'running') return;
     this.elapsed += dt;
+    const previousVolleyRemaining = this.volleyRemaining;
     this.volleyRemaining = Math.max(0, this.volleyRemaining - dt);
+    if (previousVolleyRemaining > 0 && this.volleyRemaining === 0) {
+      const flagship = this.getCommandShip();
+      this.emit('volleyReady', { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY });
+    }
     this.formationSystem.update(this.friendlies, dt);
 
     if (this.waveResolved) {
@@ -363,12 +368,12 @@ export class GameSimulation {
       * formation.volleyDamage
       * this.progression.upgrades.volleyDamageMultiplier
       * this.progression.upgrades.formationMasteryMultiplier;
-    const sources = this.friendlies.filter((ship) => ship.alive);
+    const flagship = this.getCommandShip();
     this.emit('volleyFired', {
       ...target,
       radius: volleyRadius,
       formationId: formation.id,
-      sources: sources.map(({ x: sx, y: sy }) => ({ x: sx, y: sy })),
+      source: { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY },
     });
 
     let hits = 0;
@@ -472,21 +477,6 @@ export class GameSimulation {
     if (this.status !== 'shopping') return false;
     this.status = this.preShopStatus === 'paused' ? 'paused' : this.preShopStatus;
     this.emit('shopClosed', { status: this.status });
-    return true;
-  }
-
-  openSettings() {
-    if (!['ready', 'running', 'paused', 'gameOver'].includes(this.status)) return false;
-    this.preSettingsStatus = this.status;
-    this.status = 'settings';
-    this.emit('settingsOpened', {});
-    return true;
-  }
-
-  closeSettings() {
-    if (this.status !== 'settings') return false;
-    this.status = this.preSettingsStatus === 'paused' ? 'paused' : this.preSettingsStatus;
-    this.emit('settingsClosed', { status: this.status });
     return true;
   }
 

@@ -42,8 +42,12 @@ export class AudioManager {
     if (!this.enabled) return;
     for (const event of events) {
       if (event.type === 'volleyFired') {
-        this.tone({ frequency: 130, endFrequency: 42, duration: 0.38, gain: 0.07, type: 'sawtooth' });
-        window.setTimeout(() => this.tone({ frequency: 560, endFrequency: 210, duration: 0.22, gain: 0.035 }), 45);
+        this.tone({ frequency: 95, endFrequency: 34, duration: 0.48, gain: 0.085, type: 'sawtooth' });
+        window.setTimeout(() => this.tone({ frequency: 780, endFrequency: 120, duration: 0.3, gain: 0.052, type: 'square' }), 34);
+      } else if (event.type === 'volleyReady') {
+        this.tone({ frequency: 360, endFrequency: 480, duration: 0.12, gain: 0.035, type: 'sine' });
+        window.setTimeout(() => this.tone({ frequency: 540, endFrequency: 720, duration: 0.14, gain: 0.038, type: 'sine' }), 90);
+        window.setTimeout(() => this.tone({ frequency: 760, endFrequency: 980, duration: 0.18, gain: 0.042, type: 'triangle' }), 180);
       } else if (event.type === 'destroyed') {
         const now = performance.now();
         if (now - this.lastImpactAt > 75) {
