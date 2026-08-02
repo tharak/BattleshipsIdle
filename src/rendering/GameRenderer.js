@@ -14,6 +14,10 @@ const COLORS = Object.freeze({
   grid: 0x17314d,
 });
 
+export function formatDamageAmount(amount) {
+  return Math.max(1, Math.round(Number(amount) || 0)).toLocaleString('en-US');
+}
+
 function makeShape(points) {
   const shape = new THREE.Shape();
   shape.moveTo(points[0][0], points[0][1]);
@@ -73,6 +77,7 @@ export class GameRenderer {
     this.projectilePool = this.createProjectilePool();
     this.effectPool = this.createEffectPool();
     this.gunPulsePool = this.createGunPulsePool();
+    this.damageNumberPool = this.createDamageNumberPool();
     this.createEnvironment();
     this.createTargetMarker();
     this.resize();
@@ -292,6 +297,39 @@ export class GameRenderer {
         group.visible = false;
         group.scale.set(1, 1, 1);
         group.userData.packet.position.set(0, 0, 0);
+      },
+    });
+  }
+
+  createDamageNumberPool() {
+    return new ObjectPool({
+      initialSize: 24,
+      create: () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 384;
+        canvas.height = 128;
+        const context = canvas.getContext('2d');
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = THREE.LinearFilter;
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 1,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.visible = false;
+        sprite.renderOrder = 12;
+        sprite.userData = { canvas, context, texture };
+        this.scene.add(sprite);
+        return sprite;
+      },
+      reset: (sprite) => {
+        sprite.visible = false;
+        sprite.material.opacity = 1;
+        sprite.scale.set(1, 1, 1);
       },
     });
   }
@@ -572,6 +610,8 @@ export class GameRenderer {
         this.spawnFlagshipGunPulse(event);
         this.showTarget(event.aim.x, event.aim.y, true, 1.4);
         this.shake = Math.max(this.shake, event.critical ? 1.65 : event.hitId ? 0.82 : 0.42);
+      } else if (event.type === 'damaged') {
+        this.spawnDamageNumber(event);
       } else if (event.type === 'flagshipGunAimChanged' && Number.isFinite(event.x)) {
         this.showTarget(event.x, event.y, true, 1.6);
       } else if (event.type === 'flagshipGunRejected') {
@@ -585,6 +625,7 @@ export class GameRenderer {
         this.spawnFormationTrails(event.paths);
       } else if (event.type === 'shieldImpact') {
         this.spawnImpact(event.x, event.y, 0x72a7ff, 1.35);
+        this.spawnDamageNumber({ ...event, amount: event.absorbed, faction: 'friendly', shield: true });
       } else if (event.type === 'friendlyJoined') {
         this.spawnImpact(event.x, event.y, COLORS.command, 1.8);
       } else if (event.type === 'areaImpact') {
@@ -612,6 +653,49 @@ export class GameRenderer {
       material.opacity = 1;
     }
     this.effects.push({ type: 'impact', object: group });
+  }
+
+  spawnDamageNumber({ x, y, amount, faction, critical = false, shield = false }) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const sprite = this.damageNumberPool.acquire();
+    const { canvas, context, texture } = sprite.userData;
+    const label = `${critical ? 'CRIT ' : ''}${formatDamageAmount(amount)}`;
+    const fillColor = critical ? '#fff0a6' : shield ? '#91b8ff' : faction === 'enemy' ? '#dffffd' : '#ff8b9c';
+    const strokeColor = critical ? '#8b3a00' : '#07111f';
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.save();
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.font = `${critical ? 900 : 750} ${critical ? 47 : 54}px system-ui, sans-serif`;
+    context.lineJoin = 'round';
+    context.lineWidth = critical ? 11 : 9;
+    context.strokeStyle = strokeColor;
+    context.fillStyle = fillColor;
+    context.shadowColor = fillColor;
+    context.shadowBlur = critical ? 22 : 12;
+    context.strokeText(label, canvas.width / 2, canvas.height / 2);
+    context.fillText(label, canvas.width / 2, canvas.height / 2);
+    context.restore();
+    texture.needsUpdate = true;
+
+    this.damageNumberSequence = (this.damageNumberSequence ?? 0) + 1;
+    const lane = (this.damageNumberSequence % 3) - 1;
+    const baseWidth = critical ? 33 : 24;
+    const baseHeight = critical ? 11 : 8;
+    sprite.visible = true;
+    sprite.position.set(x + lane * 0.65, y + (critical ? 4.2 : 3.4), 8);
+    sprite.scale.set(baseWidth * 0.72, baseHeight * 0.72, 1);
+    this.effects.push({
+      type: 'damageNumber',
+      object: sprite,
+      life: critical ? 1.05 : 0.82,
+      maxLife: critical ? 1.05 : 0.82,
+      riseSpeed: critical ? 7.6 : 6.1,
+      drift: lane * 0.7,
+      baseWidth,
+      baseHeight,
+      critical,
+    });
   }
 
   spawnFlagshipGunPulse(event) {
@@ -715,6 +799,25 @@ export class GameRenderer {
         effect.object.scale.x = 1 + progress * 0.28;
         if (effect.life <= 0) {
           this.gunPulsePool.release(effect.object);
+        } else {
+          remaining.push(effect);
+        }
+      } else if (effect.type === 'damageNumber') {
+        effect.life -= dt;
+        const ratio = Math.max(0, effect.life / effect.maxLife);
+        const progress = 1 - ratio;
+        const pop = progress < 0.18 ? 0.72 + progress / 0.18 * 0.28 : 1;
+        const emphasis = effect.critical ? 1 + Math.sin(progress * Math.PI) * 0.1 : 1;
+        effect.object.position.x += effect.drift * dt;
+        effect.object.position.y += effect.riseSpeed * dt;
+        effect.object.scale.set(
+          effect.baseWidth * pop * emphasis,
+          effect.baseHeight * pop * emphasis,
+          1,
+        );
+        effect.object.material.opacity = Math.min(1, ratio * 2.6);
+        if (effect.life <= 0) {
+          this.damageNumberPool.release(effect.object);
         } else {
           remaining.push(effect);
         }

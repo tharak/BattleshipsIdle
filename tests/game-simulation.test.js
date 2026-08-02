@@ -261,12 +261,19 @@ describe('GameSimulation', () => {
       simulation.beginFlagshipFire(target.x, target.y);
     }
 
-    const regularPulse = regular.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
-    const criticalPulse = critical.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    const regularEvents = regular.consumeEvents();
+    const criticalEvents = critical.consumeEvents();
+    const regularPulse = regularEvents.find((event) => event.type === 'flagshipGunPulse');
+    const criticalPulse = criticalEvents.find((event) => event.type === 'flagshipGunPulse');
+    const regularDamage = regularEvents.find((event) => event.type === 'damaged');
+    const criticalDamage = criticalEvents.find((event) => event.type === 'damaged');
 
     expect(regularPulse.critical).toBe(false);
     expect(criticalPulse.critical).toBe(true);
     expect(criticalPulse.damage).toBeCloseTo(regularPulse.damage * FLAGSHIP_GUN.criticalDamageMultiplier);
+    expect(regularDamage).toMatchObject({ source: 'flagshipGun', critical: false });
+    expect(criticalDamage).toMatchObject({ source: 'flagshipGun', critical: true });
+    expect(criticalDamage.amount).toBeCloseTo(criticalPulse.damage);
   });
 
   it('resets burst progress on release but preserves it while aim changes', () => {

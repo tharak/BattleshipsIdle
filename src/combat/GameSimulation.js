@@ -570,7 +570,7 @@ export class GameSimulation {
         firstHit.exposedRemaining = BOSS.exposureDuration;
         if (wasProtected) this.emit('bossExposed', { id: firstHit.id, x: firstHit.x, y: firstHit.y });
       }
-      this.damageEntity(firstHit, damage, 'flagshipGun');
+      this.damageEntity(firstHit, damage, 'flagshipGun', { critical });
     }
 
     this.removeDestroyedEntities();
@@ -675,7 +675,7 @@ export class GameSimulation {
     this.emit('projectileFired', { ...projectile });
   }
 
-  damageEntity(entity, amount, source) {
+  damageEntity(entity, amount, source, { critical = false } = {}) {
     if (!entity?.alive || amount <= 0) return;
     let adjustedAmount = entity.faction === 'friendly'
       ? amount * this.formationSystem.getIncomingDamageMultiplier()
@@ -706,6 +706,7 @@ export class GameSimulation {
       y: entity.y,
       amount: adjustedAmount,
       source,
+      critical: Boolean(critical),
       health: entity.health,
     });
 
