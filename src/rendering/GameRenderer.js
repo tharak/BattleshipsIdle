@@ -659,7 +659,7 @@ export class GameRenderer {
     if (!Number.isFinite(amount) || amount <= 0) return;
     const sprite = this.damageNumberPool.acquire();
     const { canvas, context, texture } = sprite.userData;
-    const label = `${critical ? 'CRIT ' : ''}${formatDamageAmount(amount)}`;
+    const label = `${formatDamageAmount(amount)}`;
     const fillColor = critical ? '#fff0a6' : shield ? '#91b8ff' : faction === 'enemy' ? '#dffffd' : '#ff8b9c';
     const strokeColor = critical ? '#8b3a00' : '#07111f';
     context.clearRect(0, 0, canvas.width, canvas.height);
