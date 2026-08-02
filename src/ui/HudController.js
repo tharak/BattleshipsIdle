@@ -37,6 +37,7 @@ export class HudController {
       offlineCloseButton: document.querySelector('#offline-close-button'),
       bossStatus: document.querySelector('#boss-status'),
       bossName: document.querySelector('#boss-name'),
+      bossHealthValue: document.querySelector('#boss-health-value'),
       bossHealthFill: document.querySelector('#boss-health-fill'),
       bossBarrierState: document.querySelector('#boss-barrier-state'),
       coachmark: document.querySelector('#coachmark'),
@@ -111,14 +112,17 @@ export class HudController {
     const boss = snapshot.enemies.find((enemy) => enemy.boss);
     this.elements.bossStatus.hidden = !boss;
     if (boss) {
-      const healthRatio = Math.max(0, boss.health / boss.maxHealth);
+      const healthRatio = Math.max(0, Math.min(1, boss.health / boss.maxHealth));
+      const healthPercent = Math.round(healthRatio * 100);
       const exposed = boss.exposedRemaining > 0;
       this.elements.bossName.textContent = 'Rift bastion';
+      this.elements.bossHealthValue.textContent = `${healthPercent}%`;
+      this.elements.bossHealthValue.setAttribute('aria-label', `Boss hull ${healthPercent} percent`);
       this.elements.bossHealthFill.style.transform = `scaleX(${healthRatio})`;
       this.elements.bossStatus.classList.toggle('is-exposed', exposed);
       this.elements.bossBarrierState.textContent = exposed
-        ? `Hull exposed // ${boss.exposedRemaining.toFixed(1)}s`
-        : 'Barrier active // flagship gun required';
+        ? `Hull exposed · ${boss.exposedRemaining.toFixed(1)}s remaining`
+        : 'Barrier active · Hold flagship gun on target';
     }
   }
 

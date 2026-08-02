@@ -25,9 +25,13 @@
       </div>
 
       <section id="boss-status" class="boss-status" aria-live="polite" hidden>
-        <div><span class="eyebrow eyebrow--danger">MAJOR CONTACT</span><strong id="boss-name">Rift bastion</strong></div>
+        <div class="boss-status__identity">
+          <span class="eyebrow eyebrow--danger">MAJOR CONTACT</span>
+          <strong id="boss-name">Rift bastion</strong>
+        </div>
+        <output id="boss-health-value" class="boss-status__value" aria-label="Boss hull 100 percent">100%</output>
         <div class="boss-meter" aria-hidden="true"><i id="boss-health-fill"></i></div>
-        <span id="boss-barrier-state">Barrier active // flagship gun required</span>
+        <span id="boss-barrier-state" class="boss-status__state">Barrier active · Hold flagship gun on target</span>
       </section>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
@@ -124,17 +128,17 @@
         </div>
       </section>
 
-      <section id="shop-overlay" class="modal-layer" aria-labelledby="shop-title" hidden>
+      <section id="shop-overlay" class="modal-layer modal-layer--shop" aria-labelledby="shop-title" hidden>
         <div class="shop-panel">
-          <header class="shop-header">
+          <div id="upgrade-list" class="upgrade-list"></div>
+          <footer class="shop-footer">
             <div>
               <span class="eyebrow eyebrow--bright">FLEET FOUNDRY</span>
               <h2 id="shop-title">Upgrade command</h2>
             </div>
             <div class="shop-balance"><span>Salvage</span><strong id="shop-currency">0</strong></div>
             <button id="shop-close-button" class="icon-button" type="button" aria-label="Close upgrades">×</button>
-          </header>
-          <div id="upgrade-list" class="upgrade-list"></div>
+          </footer>
         </div>
       </section>
 
