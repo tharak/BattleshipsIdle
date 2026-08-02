@@ -195,7 +195,7 @@ export class HudController {
         <span class="upgrade-card__icon" aria-hidden="true">${upgrade.icon}</span>
         <div>
           <h3>${upgrade.name}<span class="upgrade-card__level">LV ${upgrade.level}/${upgrade.maxLevel}</span></h3>
-          <p>${upgrade.currentEffect}<br><span>${upgrade.nextEffect}</span></p>
+          <p><span class="upgrade-card__current-effect">${upgrade.currentEffect}</span><span class="upgrade-card__next-effect">${upgrade.nextEffect}</span></p>
         </div>
       `;
       const button = document.createElement('button');
