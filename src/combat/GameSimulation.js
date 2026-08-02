@@ -85,6 +85,7 @@ export class GameSimulation {
     this.flagshipGunAim = { x: 0, y: ARENA.maxY };
     this.flagshipGunPulseAccumulator = 0;
     this.flagshipGunPulseIndex = 0;
+    this.flagshipGunBurstIndex = 0;
     this.formationSystem.transitionRemaining = 0;
     this.formationSystem.cooldownRemaining = 0;
     this.friendlies = this.createFleet();
@@ -390,7 +391,9 @@ export class GameSimulation {
       return { firing: false, reason: 'already-firing', target: aim };
     }
 
-    if (this.flagshipGunEnergy < FLAGSHIP_GUN.firingDuration - 0.0001) {
+    const requiresFullCharge = automatic
+      && this.flagshipGunEnergy < FLAGSHIP_GUN.firingDuration - 0.0001;
+    if (this.flagshipGunEnergy <= 0 || requiresFullCharge) {
       this.emit('flagshipGunRejected', { ...aim, remaining: this.getFlagshipGunRechargeRemaining() });
       return { firing: false, reason: 'cooldown', target: aim };
     }
@@ -399,9 +402,9 @@ export class GameSimulation {
     this.flagshipGunManualControl = !automatic;
     this.flagshipGunAim = aim;
     this.flagshipGunPulseAccumulator = 0;
+    this.flagshipGunBurstIndex = 0;
     this.emit('flagshipGunStarted', { ...aim, automatic });
-    this.fireFlagshipGunPulse();
-    this.flagshipGunEnergy = Math.max(0, this.flagshipGunEnergy - FLAGSHIP_GUN.pulseInterval);
+    this.fireAndConsumeFlagshipGunPulse();
     return { firing: true, automatic, target: aim };
   }
 
@@ -434,6 +437,7 @@ export class GameSimulation {
       energyRatio: this.getFlagshipGunEnergyRatio(),
       rechargeRemaining: this.getFlagshipGunRechargeRemaining(),
     });
+    this.flagshipGunBurstIndex = 0;
     return true;
   }
 
@@ -444,15 +448,13 @@ export class GameSimulation {
         if (target) this.flagshipGunAim = { x: target.x, y: target.y };
       }
 
-      const consumed = Math.min(dt, this.flagshipGunEnergy);
-      this.flagshipGunEnergy = Math.max(0, this.flagshipGunEnergy - consumed);
-      this.flagshipGunPulseAccumulator += consumed;
+      this.flagshipGunPulseAccumulator += dt;
       while (this.flagshipGunPulseAccumulator >= FLAGSHIP_GUN.pulseInterval) {
         this.flagshipGunPulseAccumulator -= FLAGSHIP_GUN.pulseInterval;
-        this.fireFlagshipGunPulse();
-        if (this.waveResolved || this.status !== 'running') break;
+        this.fireAndConsumeFlagshipGunPulse();
+        if (!this.flagshipGunFiring || this.waveResolved || this.status !== 'running') break;
       }
-      if (this.flagshipGunEnergy <= 0 || this.waveResolved || this.status !== 'running') {
+      if (this.flagshipGunFiring && (this.waveResolved || this.status !== 'running')) {
         this.cancelFlagshipFire(this.flagshipGunEnergy <= 0 ? 'depleted' : 'inactive');
       }
       return;
@@ -477,13 +479,34 @@ export class GameSimulation {
     }
   }
 
-  fireFlagshipGunPulse() {
+  fireAndConsumeFlagshipGunPulse() {
+    if (!this.flagshipGunFiring || this.flagshipGunEnergy <= 0) return false;
+    const energyCost = Math.min(FLAGSHIP_GUN.pulseInterval, this.flagshipGunEnergy);
+    const energyFraction = energyCost / FLAGSHIP_GUN.pulseInterval;
+    this.flagshipGunEnergy = Math.max(0, this.flagshipGunEnergy - energyCost);
+    this.fireFlagshipGunPulse(energyFraction);
+    if (this.flagshipGunEnergy <= 0 && this.flagshipGunFiring) this.cancelFlagshipFire('depleted');
+    return true;
+  }
+
+  fireFlagshipGunPulse(energyFraction = 1) {
     const formation = this.formationSystem.current;
     const shotHalfWidth = FLAGSHIP_GUN.shotHalfWidth * formation.gunWidth;
+    const maximumBurstPulses = Math.round(FLAGSHIP_GUN.firingDuration / FLAGSHIP_GUN.pulseInterval);
+    this.flagshipGunBurstIndex += 1;
+    const burstProgress = maximumBurstPulses <= 1
+      ? 1
+      : clamp((this.flagshipGunBurstIndex - 1) / (maximumBurstPulses - 1), 0, 1);
+    const damageMultiplier = FLAGSHIP_GUN.burstStartDamageMultiplier
+      + (FLAGSHIP_GUN.burstEndDamageMultiplier - FLAGSHIP_GUN.burstStartDamageMultiplier) * burstProgress;
+    const criticalChance = FLAGSHIP_GUN.criticalStartChance
+      + (FLAGSHIP_GUN.criticalEndChance - FLAGSHIP_GUN.criticalStartChance) * burstProgress;
     const pulseDamage = FLAGSHIP_GUN.damagePerSecond * FLAGSHIP_GUN.pulseInterval
       * formation.gunDamage
       * this.progression.upgrades.volleyDamageMultiplier
-      * this.progression.upgrades.formationMasteryMultiplier;
+      * this.progression.upgrades.formationMasteryMultiplier
+      * damageMultiplier
+      * energyFraction;
     const flagship = this.getCommandShip();
     const source = { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY };
     const aimDx = this.flagshipGunAim.x - source.x;
@@ -518,6 +541,10 @@ export class GameSimulation {
       x: source.x + direction.x * shotDistance,
       y: source.y + direction.y * shotDistance,
     };
+    const critical = Boolean(firstHit && this.random() < criticalChance);
+    const damage = firstHit
+      ? pulseDamage * (critical ? FLAGSHIP_GUN.criticalDamageMultiplier : 1)
+      : 0;
     this.flagshipGunPulseIndex += 1;
     this.emit('flagshipGunPulse', {
       ...endpoint,
@@ -528,6 +555,12 @@ export class GameSimulation {
       source,
       hitId: firstHit?.id ?? null,
       pulseIndex: this.flagshipGunPulseIndex,
+      burstIndex: this.flagshipGunBurstIndex,
+      damageMultiplier,
+      criticalChance,
+      critical,
+      energyFraction,
+      damage,
       manual: this.flagshipGunManualControl,
     });
 
@@ -537,7 +570,7 @@ export class GameSimulation {
         firstHit.exposedRemaining = BOSS.exposureDuration;
         if (wasProtected) this.emit('bossExposed', { id: firstHit.id, x: firstHit.x, y: firstHit.y });
       }
-      this.damageEntity(firstHit, pulseDamage, 'flagshipGun');
+      this.damageEntity(firstHit, damage, 'flagshipGun');
     }
 
     this.removeDestroyedEntities();
@@ -825,6 +858,7 @@ export class GameSimulation {
         automated: this.progression.upgrades.automatedGunnery,
         aim: { ...this.flagshipGunAim },
         pulseIndex: this.flagshipGunPulseIndex,
+        burstIndex: this.flagshipGunBurstIndex,
       },
       commandHealth: command?.health ?? 0,
       commandMaxHealth: command?.maxHealth ?? FLEET.commandHealth,

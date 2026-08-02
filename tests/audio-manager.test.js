@@ -91,6 +91,24 @@ describe('AudioManager', () => {
     expect(audio.noise).toHaveBeenCalledTimes(2);
   });
 
+  it('layers a brighter impact tone onto critical flagship pulses', () => {
+    const audio = new AudioManager({ now: () => 1_000 });
+    audio.tone = vi.fn();
+    audio.noise = vi.fn();
+
+    audio.handleEvents([{
+      type: 'flagshipGunPulse',
+      pulseIndex: 20,
+      hitId: 'enemy-1',
+      damageMultiplier: 1.45,
+      critical: true,
+    }]);
+
+    expect(audio.tone).toHaveBeenCalledTimes(2);
+    expect(audio.tone).toHaveBeenLastCalledWith(expect.objectContaining({ frequency: 1260, gain: 0.034 }));
+    expect(audio.noise).toHaveBeenCalledWith(expect.objectContaining({ cutoff: 1480 }));
+  });
+
   it('gives every enabled interface button a quiet pointer cue', () => {
     let pointerHandler;
     const root = {

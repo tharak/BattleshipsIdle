@@ -11,7 +11,7 @@ The latest deployed build will be available at:
 <https://tharak.github.io/BattleshipsIdle/>
 
 - Use the opening deployment overlay to send the fleet into battle.
-- Hold the battlefield and drag to aim the flagship's pulsed cannon. Each shot stops at the first enemy hull or continues to the battlefield boundary.
+- Hold the battlefield and drag to aim the flagship's pulsed cannon. Partial charge is always usable, while an uninterrupted burst builds pulse damage and critical-hit chance. Each shot stops at the first enemy hull or continues to the battlefield boundary.
 - Choose formations from the five persistent fleet-diagram buttons and visible bonus labels along the bottom edge.
 - Open upgrades from the sixth bottom-dock button, which also displays current salvage.
 - Escort ships fire automatically; the flagship only fires while you hold and aim its cannon.
@@ -29,7 +29,7 @@ The current prototype includes:
 - five animated formations and escalating enemy waves;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire and enemy pressure;
-- a hold-and-aim pulsed flagship cannon with sustained fire, proportional cooling, turret recoil, tracers, and first-contact impacts;
+- a hold-and-aim pulsed flagship cannon with partial-charge firing, escalating burst damage and critical chance, proportional cooling, turret recoil, tracers, and first-contact impacts;
 - boss barriers that reward actively tracking the target with flagship fire;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
 - flagship-mounted energy lights, firing/cooling audio, and persistent in-world hull and shield bars;

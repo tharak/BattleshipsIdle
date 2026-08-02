@@ -38,7 +38,7 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().projectiles.length).toBeGreaterThan(0);
   });
 
-  it('starts the flagship gun manually and enforces proportional cooling after release', () => {
+  it('starts the flagship gun manually and can resume before a full recharge', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.consumeEvents();
@@ -48,11 +48,14 @@ describe('GameSimulation', () => {
     const firedEvent = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
     simulation.endFlagshipFire();
     const second = simulation.beginFlagshipFire(target.x, target.y);
+    const resumedEvent = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    simulation.endFlagshipFire();
 
     expect(first.firing).toBe(true);
     expect(firedEvent.hitId).toBe(target.id);
     expect(firedEvent.source).toMatchObject({ x: simulation.getCommandShip().x, y: simulation.getCommandShip().y });
-    expect(second).toMatchObject({ firing: false, reason: 'cooldown' });
+    expect(second).toMatchObject({ firing: true });
+    expect(resumedEvent).toMatchObject({ burstIndex: 1, energyFraction: 1 });
     expect(simulation.getSnapshot().flagshipGun.rechargeRemaining).toBeGreaterThan(0);
     expect(simulation.getSnapshot().flagshipGun.rechargeRemaining).toBeLessThan(FLAGSHIP_GUN.fullRecharge);
   });
@@ -165,7 +168,7 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().flagshipGun.firing).toBe(true);
   });
 
-  it('automatically ends a depleted firing cycle and requires a full recharge', () => {
+  it('automatically ends a depleted firing cycle and permits a partial-power follow-up', () => {
     const simulation = createSimulation();
     simulation.startRun();
     simulation.beginFlagshipFire(0, ARENA.maxY);
@@ -176,7 +179,133 @@ describe('GameSimulation', () => {
     expect(depleted.firing).toBe(false);
     expect(depleted.energyRatio).toBeLessThan(0.05);
     expect(depleted.recharging).toBe(true);
-    expect(simulation.beginFlagshipFire(0, ARENA.maxY)).toMatchObject({ firing: false, reason: 'cooldown' });
+    simulation.consumeEvents();
+    expect(simulation.beginFlagshipFire(0, ARENA.maxY)).toMatchObject({ firing: true });
+    const partialPulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    expect(partialPulse.energyFraction).toBeGreaterThan(0);
+    expect(partialPulse.energyFraction).toBeLessThan(1);
+    expect(simulation.getSnapshot().flagshipGun).toMatchObject({ firing: false, energy: 0 });
+  });
+
+  it('scales a sub-pulse manual shot to the available energy and rejects an empty gun', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [target, ...others] = simulation.enemies;
+    Object.assign(target, { x: 0, y: 0, health: 1000, maxHealth: 1000, speed: 0, drift: 0 });
+    others.forEach((enemy) => { enemy.x = 40; });
+    simulation.flagshipGunEnergy = FLAGSHIP_GUN.pulseInterval / 2;
+    simulation.consumeEvents();
+
+    expect(simulation.beginFlagshipFire(target.x, target.y)).toMatchObject({ firing: true });
+    const pulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+
+    expect(pulse).toMatchObject({
+      burstIndex: 1,
+      damageMultiplier: FLAGSHIP_GUN.burstStartDamageMultiplier,
+      criticalChance: FLAGSHIP_GUN.criticalStartChance,
+      critical: false,
+      energyFraction: 0.5,
+    });
+    expect(1000 - target.health).toBeCloseTo(pulse.damage);
+    expect(simulation.getSnapshot().flagshipGun).toMatchObject({ firing: false, energy: 0, burstIndex: 0 });
+    expect(simulation.beginFlagshipFire(target.x, target.y)).toMatchObject({ firing: false, reason: 'cooldown' });
+  });
+
+  it('ramps damage and critical chance across an uninterrupted full burst', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [target, ...others] = simulation.enemies;
+    Object.assign(target, {
+      x: 0,
+      originX: 0,
+      y: 0,
+      health: 100000,
+      maxHealth: 100000,
+      speed: 0,
+      drift: 0,
+    });
+    others.forEach((enemy) => { Object.assign(enemy, { x: 40, originX: 40, speed: 0, drift: 0 }); });
+    simulation.consumeEvents();
+
+    simulation.beginFlagshipFire(target.x, target.y);
+    advance(simulation, FLAGSHIP_GUN.firingDuration);
+    const pulses = simulation.consumeEvents().filter((event) => event.type === 'flagshipGunPulse');
+
+    expect(pulses).toHaveLength(20);
+    expect(pulses[0]).toMatchObject({
+      burstIndex: 1,
+      damageMultiplier: FLAGSHIP_GUN.burstStartDamageMultiplier,
+      criticalChance: FLAGSHIP_GUN.criticalStartChance,
+    });
+    expect(pulses.at(-1)).toMatchObject({
+      burstIndex: 20,
+      damageMultiplier: FLAGSHIP_GUN.burstEndDamageMultiplier,
+      criticalChance: FLAGSHIP_GUN.criticalEndChance,
+    });
+    for (let index = 1; index < pulses.length; index += 1) {
+      expect(pulses[index].damageMultiplier).toBeGreaterThan(pulses[index - 1].damageMultiplier);
+      expect(pulses[index].criticalChance).toBeGreaterThan(pulses[index - 1].criticalChance);
+    }
+  });
+
+  it('applies the configured critical multiplier and reports the outcome', () => {
+    const regular = createSimulation();
+    const critical = new GameSimulation({ random: () => 0 });
+    regular.startRun();
+    critical.startRun();
+    for (const simulation of [regular, critical]) {
+      const [target, ...others] = simulation.enemies;
+      Object.assign(target, { x: 0, y: 0, health: 1000, maxHealth: 1000, speed: 0, drift: 0 });
+      others.forEach((enemy) => { enemy.x = 40; });
+      simulation.consumeEvents();
+      simulation.beginFlagshipFire(target.x, target.y);
+    }
+
+    const regularPulse = regular.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    const criticalPulse = critical.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+
+    expect(regularPulse.critical).toBe(false);
+    expect(criticalPulse.critical).toBe(true);
+    expect(criticalPulse.damage).toBeCloseTo(regularPulse.damage * FLAGSHIP_GUN.criticalDamageMultiplier);
+  });
+
+  it('resets burst progress on release but preserves it while aim changes', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [target, ...others] = simulation.enemies;
+    Object.assign(target, { x: 0, originX: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
+    others.forEach((enemy) => { Object.assign(enemy, { x: 40, originX: 40, speed: 0, drift: 0 }); });
+    simulation.consumeEvents();
+
+    simulation.beginFlagshipFire(target.x, target.y);
+    simulation.aimFlagshipFire(target.x + 0.1, target.y);
+    advance(simulation, FLAGSHIP_GUN.pulseInterval + 0.02);
+    const activePulses = simulation.consumeEvents().filter((event) => event.type === 'flagshipGunPulse');
+    simulation.endFlagshipFire();
+    simulation.beginFlagshipFire(target.x, target.y);
+    const restartedPulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+
+    expect(activePulses.map((pulse) => pulse.burstIndex)).toEqual([1, 2]);
+    expect(restartedPulse.burstIndex).toBe(1);
+  });
+
+  it('keeps autonomous gunnery idle until its charge is full', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { upgrades: { automatedGunnery: 1 } },
+    });
+    simulation.startRun();
+    const target = simulation.enemies[0];
+    simulation.flagshipGunEnergy = FLAGSHIP_GUN.firingDuration / 2;
+    simulation.consumeEvents();
+
+    expect(simulation.beginFlagshipFire(target.x, target.y, { automatic: true }))
+      .toMatchObject({ firing: false, reason: 'cooldown' });
+    simulation.update(1 / 60);
+    expect(simulation.getSnapshot().flagshipGun.firing).toBe(false);
+    expect(simulation.consumeEvents().some((event) => event.type === 'flagshipGunPulse')).toBe(false);
+
+    expect(simulation.beginFlagshipFire(target.x, target.y)).toMatchObject({ firing: true });
   });
 
   it('applies breach pressure to the command ship', () => {

@@ -571,7 +571,7 @@ export class GameRenderer {
       } else if (event.type === 'flagshipGunPulse') {
         this.spawnFlagshipGunPulse(event);
         this.showTarget(event.aim.x, event.aim.y, true, 1.4);
-        this.shake = Math.max(this.shake, event.hitId ? 0.82 : 0.42);
+        this.shake = Math.max(this.shake, event.critical ? 1.65 : event.hitId ? 0.82 : 0.42);
       } else if (event.type === 'flagshipGunAimChanged' && Number.isFinite(event.x)) {
         this.showTarget(event.x, event.y, true, 1.6);
       } else if (event.type === 'flagshipGunRejected') {
@@ -620,6 +620,13 @@ export class GameRenderer {
     const length = Math.max(0.1, Math.hypot(dx, dy));
     const group = this.gunPulsePool.acquire();
     group.visible = true;
+    const energyStrength = Math.sqrt(Math.max(0, Math.min(1, event.energyFraction ?? 1)));
+    const power = Math.max(0.28, Math.min(1.8, (event.damageMultiplier ?? 1) * energyStrength));
+    const widthScale = (0.74 + power * 0.3) * (event.critical ? 1.18 : 1);
+    const colors = event.critical
+      ? [0xffd36a, 0xffffc4, 0xffffff]
+      : [0xffc76c, 0xffe2a1, 0xffffff];
+    group.userData.materials.forEach((material, index) => material.color.setHex(colors[index]));
     const lateralOffset = event.pulseIndex % 2 === 0 ? 0.42 : -0.42;
     const offsetX = (-dy / length) * lateralOffset;
     const offsetY = (dx / length) * lateralOffset;
@@ -631,19 +638,31 @@ export class GameRenderer {
     group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
     group.userData.length = length;
     group.userData.trailLength = Math.min(16, length * 0.24);
-    group.userData.wake.scale.set(1.8, length, 1);
-    group.userData.tracer.scale.set(1.05, group.userData.trailLength, 1);
-    group.userData.packet.scale.set(0.62, Math.min(4.6, length * 0.09), 1);
+    group.userData.wake.scale.set(1.8 * widthScale, length, 1);
+    group.userData.tracer.scale.set(1.05 * widthScale, group.userData.trailLength, 1);
+    group.userData.packet.scale.set(0.62 * widthScale, Math.min(4.6, length * 0.09), 1);
     group.userData.tracer.position.y = -length / 2;
     group.userData.packet.position.y = -length / 2;
-    group.userData.materials[0].opacity = 0.07;
-    group.userData.materials[1].opacity = 0.72;
-    group.userData.materials[2].opacity = 1;
+    group.userData.baseOpacities = [
+      Math.min(0.12, 0.045 + power * 0.03),
+      Math.min(0.92, 0.54 + power * 0.2),
+      Math.min(1, 0.72 + power * 0.24),
+    ];
+    group.userData.materials.forEach((material, index) => {
+      material.opacity = group.userData.baseOpacities[index];
+    });
     this.effects.push({ type: 'gunPulse', object: group, life: 0.26, maxLife: 0.26 });
     const command = [...this.entityMeshes.values()].find((mesh) => mesh.userData.entity?.role === 'command');
     if (command?.userData.turret) command.userData.turret.userData.recoil = 1;
     this.spawnImpact(event.source.x, event.source.y, COLORS.command, 0.5);
-    if (event.hitId) this.spawnImpact(event.x, event.y, COLORS.friendly, 0.85);
+    if (event.hitId) {
+      this.spawnImpact(
+        event.x,
+        event.y,
+        event.critical ? 0xffffc4 : COLORS.friendly,
+        event.critical ? 1.5 + power * 0.35 : 0.65 + power * 0.2,
+      );
+    }
   }
 
   spawnFormationTrails(paths) {
@@ -686,9 +705,9 @@ export class GameRenderer {
         effect.life -= dt;
         const ratio = Math.max(0, effect.life / effect.maxLife);
         const progress = 1 - ratio;
-        effect.object.userData.materials[0].opacity = ratio * 0.07;
-        effect.object.userData.materials[1].opacity = ratio * 0.76;
-        effect.object.userData.materials[2].opacity = ratio;
+        effect.object.userData.materials.forEach((material, index) => {
+          material.opacity = ratio * effect.object.userData.baseOpacities[index];
+        });
         const packetY = -effect.object.userData.length / 2
           + effect.object.userData.length * Math.min(1, progress * 1.7);
         effect.object.userData.packet.position.y = packetY;

@@ -189,14 +189,20 @@ export class AudioManager {
         break;
       case 'flagshipGunPulse':
         if (this.canPlay('flagship-gun-pulse', 82)) {
+          const powerPitch = Math.max(0, (event.damageMultiplier ?? 1) - 0.7) * 110;
           this.tone({
-            frequency: event.pulseIndex % 2 === 0 ? 760 : 690,
+            frequency: (event.pulseIndex % 2 === 0 ? 760 : 690) + powerPitch,
             endFrequency: event.hitId ? 145 : 260,
             duration: 0.1,
-            gain: event.hitId ? 0.028 : 0.022,
+            gain: event.hitId ? 0.028 + powerPitch / 22000 : 0.022,
             type: 'square',
           });
-          if (event.hitId) this.noise({ duration: 0.075, gain: 0.008, cutoff: 920 });
+          if (event.critical) {
+            this.tone({ frequency: 1260, endFrequency: 620, duration: 0.16, gain: 0.034, type: 'triangle' });
+            this.noise({ duration: 0.11, gain: 0.014, cutoff: 1480 });
+          } else if (event.hitId) {
+            this.noise({ duration: 0.075, gain: 0.008, cutoff: 920 });
+          }
         }
         break;
       case 'flagshipGunStopped':

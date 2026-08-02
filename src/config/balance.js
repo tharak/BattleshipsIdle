@@ -53,6 +53,11 @@ export const FLAGSHIP_GUN = Object.freeze({
   pulseInterval: 0.12,
   damagePerSecond: 90,
   shotHalfWidth: 0.78,
+  burstStartDamageMultiplier: 0.7,
+  burstEndDamageMultiplier: 1.45,
+  criticalStartChance: 0.05,
+  criticalEndChance: 0.4,
+  criticalDamageMultiplier: 1.5,
 });
 
 export const WAVES = Object.freeze({

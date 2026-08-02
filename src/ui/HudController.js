@@ -236,7 +236,7 @@ export class HudController {
     this.coachTimer = window.setTimeout(() => {
       if (this.onboardingComplete) return;
       this.elements.coachmarkTitle.textContent = 'Your command matters';
-      this.elements.coachmarkDetail.textContent = 'Hold and drag to rake the pulsed cannon across approaching targets.';
+      this.elements.coachmarkDetail.textContent = 'Hold and drag to build stronger pulses and a rising critical chance.';
     }, 2800);
   }
 
