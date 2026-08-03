@@ -17,6 +17,22 @@ function makeShape(points) {
   return shape;
 }
 
+function createHullContour(points, sharedMaterial, { z, scale, renderOrder }) {
+  const material = sharedMaterial.clone();
+  material.userData.disposeWithShip = true;
+  const contour = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(
+      points.map(([x, y]) => new THREE.Vector3(x, y, 0)),
+    ),
+    material,
+  );
+  contour.position.z = z;
+  contour.scale.setScalar(scale);
+  contour.renderOrder = renderOrder;
+  contour.userData.baseOpacity = material.opacity;
+  return contour;
+}
+
 function createMaterial(color, options = {}) {
   return new THREE.MeshStandardMaterial({
     color,
@@ -97,6 +113,14 @@ export class GameRenderer {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
+    const contourMaterial = (color, opacity) => new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
     return {
       friendlyMaterial: createMaterial(RENDER_COLORS.friendlyHull, {
         ...hullOptions,
@@ -116,17 +140,20 @@ export class GameRenderer {
       enemyMaterial: createMaterial(RENDER_COLORS.enemyHull, {
         ...hullOptions,
         emissive: RENDER_COLORS.enemy,
+        emissiveIntensity: RENDERING.material.enemyHullEmissiveIntensity,
       }),
       enemyArmorMaterial: createMaterial(RENDER_COLORS.enemyArmor, armorOptions),
       eliteMaterial: createMaterial(RENDER_COLORS.eliteHull, {
         ...hullOptions,
         emissive: RENDER_COLORS.elite,
+        emissiveIntensity: RENDERING.material.eliteHullEmissiveIntensity,
       }),
       eliteArmorMaterial: createMaterial(RENDER_COLORS.eliteArmor, armorOptions),
       eliteAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.elite }),
       bossMaterial: createMaterial(RENDER_COLORS.bossHull, {
         ...hullOptions,
         emissive: RENDER_COLORS.boss,
+        emissiveIntensity: RENDERING.material.bossHullEmissiveIntensity,
       }),
       bossArmorMaterial: createMaterial(RENDER_COLORS.bossArmor, armorOptions),
       bossAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.boss }),
@@ -148,29 +175,19 @@ export class GameRenderer {
       engineEnemyMaterial: glowMaterial(RENDER_COLORS.engineEnemy),
       engineEliteMaterial: glowMaterial(RENDER_COLORS.engineElite),
       engineBossMaterial: glowMaterial(RENDER_COLORS.engineBoss),
-      enemyHaloMaterial: new THREE.MeshBasicMaterial({
-        color: RENDER_COLORS.enemy,
-        transparent: true,
-        opacity: RENDERING.material.enemyHaloOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-      bossHaloMaterial: new THREE.MeshBasicMaterial({
-        color: RENDER_COLORS.boss,
-        transparent: true,
-        opacity: RENDERING.material.bossHaloOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      shieldMaterial: new THREE.LineBasicMaterial({
-        color: RENDER_COLORS.shield,
-        transparent: true,
-        opacity: RENDERING.material.shieldOpacity,
-        depthTest: false,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
+      enemyContourMaterial: contourMaterial(
+        RENDER_COLORS.enemy,
+        RENDERING.material.enemyContourOpacity,
+      ),
+      eliteContourMaterial: contourMaterial(
+        RENDER_COLORS.elite,
+        RENDERING.material.eliteContourOpacity,
+      ),
+      bossContourMaterial: contourMaterial(
+        RENDER_COLORS.boss,
+        RENDERING.material.bossContourOpacity,
+      ),
+      shieldMaterial: contourMaterial(RENDER_COLORS.shield, RENDERING.material.shieldOpacity),
       darkMaterial: createMaterial(RENDER_COLORS.darkHull, { emissiveIntensity: RENDERING.material.darkEmissiveIntensity }),
       healthMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendly }),
       enemyHealthMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemy }),
@@ -182,7 +199,6 @@ export class GameRenderer {
       projectileFriendly: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
       projectileEnemy: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemyCore }),
       projectileGeometry: new THREE.CapsuleGeometry(...RENDERING.geometry.projectile),
-      haloGeometry: new THREE.RingGeometry(...RENDERING.geometry.halo),
       ringGeometry: new THREE.RingGeometry(...RENDERING.geometry.impactRing),
       chargeNodeGeometry: new THREE.CircleGeometry(...RENDERING.geometry.chargeNode),
       canopyGeometry: new THREE.SphereGeometry(
@@ -599,35 +615,17 @@ export class GameRenderer {
       group.add(bridge);
     }
 
-    const halo = new THREE.Mesh(
-      this.shared.haloGeometry,
-      entity.boss ? this.shared.bossHaloMaterial : this.shared.enemyHaloMaterial,
-    );
-    halo.position.z = RENDERING.ships.haloZ;
-    halo.visible = !friendly;
-    halo.scale.setScalar(
-      entity.boss
-        ? RENDERING.ships.haloScales.boss
-        : entity.elite ? RENDERING.ships.haloScales.elite : RENDERING.ships.haloScales.standard,
-    );
-    group.add(halo);
-
-    let shieldOutline = null;
-    if (friendly) {
-      const outlinePoints = shapePoints.map(([x, y]) => new THREE.Vector3(x, y, 0));
-      const shieldMaterial = this.shared.shieldMaterial.clone();
-      shieldMaterial.userData.disposeWithShip = true;
-      shieldOutline = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(outlinePoints),
-        shieldMaterial,
-      );
-      shieldOutline.position.z = RENDERING.ships.shieldOutline.z;
-      shieldOutline.scale.setScalar(RENDERING.ships.shieldOutline.scale);
-      shieldOutline.renderOrder = RENDERING.ships.shieldOutline.renderOrder;
-      shieldOutline.userData.baseOpacity = shieldMaterial.opacity;
-      shieldOutline.visible = entity.maxShield > 0;
-      group.add(shieldOutline);
-    }
+    const contourMaterial = friendly
+      ? this.shared.shieldMaterial
+      : entity.boss
+        ? this.shared.bossContourMaterial
+        : entity.elite ? this.shared.eliteContourMaterial : this.shared.enemyContourMaterial;
+    const contourConfig = friendly
+      ? RENDERING.ships.shieldOutline
+      : RENDERING.ships.hostileOutline;
+    const hullContour = createHullContour(shapePoints, contourMaterial, contourConfig);
+    hullContour.visible = friendly ? entity.maxShield > 0 : true;
+    group.add(hullContour);
 
     let healthGroup = null;
     let chargeGroup = null;
@@ -678,8 +676,7 @@ export class GameRenderer {
     group.userData.baseScale = scale;
     group.userData.health = healthGroup;
     group.userData.chargeGroup = chargeGroup;
-    group.userData.halo = halo;
-    group.userData.shieldOutline = shieldOutline;
+    group.userData.hullContour = hullContour;
     group.userData.turret = turret;
     group.userData.engineGlows = engineGlows;
     group.userData.entity = entity;
@@ -770,32 +767,33 @@ export class GameRenderer {
             - (activeBarrel ? recoil * RENDERING.ships.turret.recoilDistance : 0);
         });
       }
-      group.userData.halo.rotation.z += RENDERING.entityAnimation.haloRotation;
       if (entity.boss) {
         const exposed = entity.exposedRemaining > 0;
-        group.userData.halo.material.color.setHex(exposed ? RENDER_COLORS.friendly : RENDER_COLORS.boss);
-        group.userData.halo.material.opacity = exposed
+        group.userData.hullContour.material.color.setHex(
+          exposed ? RENDER_COLORS.friendly : RENDER_COLORS.boss,
+        );
+        group.userData.hullContour.material.opacity = exposed
           ? RENDERING.entityAnimation.bossExposedOpacity
           : RENDERING.entityAnimation.bossBaseOpacity
             + Math.sin(this.clockTime * RENDERING.entityAnimation.bossPulseSpeed)
             * RENDERING.entityAnimation.bossPulseOpacity;
       }
-      if (group.userData.shieldOutline) {
+      if (entity.faction === 'friendly') {
         const shieldRatio = entity.maxShield > 0
           ? Math.max(0, Math.min(1, entity.shield / entity.maxShield))
           : 0;
         const shieldPulse = Math.sin(
           this.clockTime * RENDERING.entityAnimation.shieldPulseSpeed + (entity.slot ?? 0),
         ) * RENDERING.entityAnimation.shieldPulseScale * shieldRatio;
-        group.userData.shieldOutline.visible = shieldRatio > 0;
-        group.userData.shieldOutline.scale.setScalar(
+        group.userData.hullContour.visible = shieldRatio > 0;
+        group.userData.hullContour.scale.setScalar(
           RENDERING.ships.shieldOutline.scale
           * (RENDERING.entityAnimation.shieldMinimumScale
             + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale
             + shieldPulse),
         );
-        group.userData.shieldOutline.material.opacity
-          = group.userData.shieldOutline.userData.baseOpacity
+        group.userData.hullContour.material.opacity
+          = group.userData.hullContour.userData.baseOpacity
           * (RENDERING.entityAnimation.shieldMinimumOpacity
             + shieldRatio * RENDERING.entityAnimation.shieldEnergyOpacity);
       }
@@ -1346,7 +1344,6 @@ export class GameRenderer {
   disposeGroupGeometry(group) {
     group.traverse((child) => {
       if (child.geometry && ![
-        this.shared.haloGeometry,
         this.shared.projectileGeometry,
         this.shared.ringGeometry,
         this.shared.chargeNodeGeometry,

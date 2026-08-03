@@ -27,14 +27,18 @@ describe('damage number formatting', () => {
     expect(source).not.toMatch(/0x[\da-f]+|#[\da-f]{3,8}/i);
   });
 
-  it('renders friendly shields from the ship silhouette instead of a circular ring', () => {
+  it('reuses hull contours for scalable shields and hostile status effects', () => {
     const rendererPath = fileURLToPath(new URL('../src/rendering/GameRenderer.js', import.meta.url));
     const source = readFileSync(rendererPath, 'utf8');
 
+    expect(source).toContain('function createHullContour');
+    expect(source).toContain('createHullContour(shapePoints, contourMaterial, contourConfig)');
     expect(source).toContain('new THREE.LineLoop');
     expect(source).not.toContain('shieldRing');
     expect(source).not.toContain('shieldGlowMaterial');
+    expect(source).not.toContain('haloGeometry');
     expect(RENDERING.ships.shieldOutline).not.toHaveProperty('glowScale');
+    expect(RENDERING.entityAnimation.shieldEnergyScale).toBeGreaterThan(0.1);
   });
 
   it('defines a complete layered visual profile for every ship archetype', () => {
