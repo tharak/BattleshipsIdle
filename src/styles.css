@@ -70,34 +70,20 @@ button:focus-visible {
 .flagship-vitals {
   position: absolute;
   z-index: 4;
-  width: 106px;
+  width: 66px;
   pointer-events: none;
   transform: translateX(-50%);
 }
 
 .flagship-vitals__row {
-  display: grid;
-  grid-template-columns: 14px 1fr 25px;
-  align-items: center;
-  gap: 3px;
-  height: 9px;
+  height: 8px;
   color: var(--gold);
-  font-family: "Chakra Petch", sans-serif;
-  font-size: 7px;
-  font-weight: 700;
-  line-height: 1;
-  text-shadow: 0 0 6px currentColor;
 }
 
 .flagship-vitals__row--shield { color: #72a7ff; }
 
-.flagship-vitals__row output {
-  color: currentColor;
-  font: inherit;
-  text-align: right;
-}
-
 .flagship-vitals__row i {
+  display: block;
   height: 5px;
   overflow: hidden;
   border: 1px solid currentColor;

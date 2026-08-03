@@ -14,9 +14,7 @@ export class HudController {
       currency: document.querySelector('#currency-value'),
       flagshipVitals: document.querySelector('#flagship-vitals'),
       flagshipHullFill: document.querySelector('#flagship-hull-fill'),
-      flagshipHullValue: document.querySelector('#flagship-hull-value'),
       flagshipShieldFill: document.querySelector('#flagship-shield-fill'),
-      flagshipShieldValue: document.querySelector('#flagship-shield-value'),
       message: document.querySelector('#message-banner'),
       startOverlay: document.querySelector('#start-overlay'),
       startButton: document.querySelector('#start-button'),
@@ -95,8 +93,6 @@ export class HudController {
     }
     this.elements.flagshipHullFill.style.transform = `scaleX(${Math.max(0, hullPercent) / 100})`;
     this.elements.flagshipShieldFill.style.transform = `scaleX(${Math.max(0, shieldPercent) / 100})`;
-    this.elements.flagshipHullValue.textContent = `${hullPercent}%`;
-    this.elements.flagshipShieldValue.textContent = `${shieldPercent}%`;
     this.elements.flagshipVitals.setAttribute(
       'aria-label',
       `Flagship hull ${hullPercent} percent, shield ${shieldPercent} percent`,
