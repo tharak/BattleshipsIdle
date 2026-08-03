@@ -1,6 +1,6 @@
 # Voidline Command
 
-An original, touch-first browser game about commanding a geometric deep-space fleet. Your escorts hold the lower edge of a full-screen battlefield while you sweep the flagship's sustained cannon across incoming formations.
+An original, touch-first browser game about shaping and commanding a geometric deep-space fleet. Arrange ships live in the lower fleet zone, dodge telegraphed attacks, and turn successful maneuvers into stronger flagship bursts.
 
 This project uses its own setting, silhouettes, color language, and procedural effects. It does not use names, characters, ship designs, story elements, audio, or visual assets from existing franchises.
 
@@ -11,9 +11,11 @@ The latest deployed build will be available at:
 <https://tharak.github.io/BattleshipsIdle/>
 
 - Use the opening deployment overlay to send the fleet into battle.
-- Hold the battlefield and drag to aim the flagship's pulsed cannon. Partial charge is always usable, while an uninterrupted burst builds pulse damage and critical-hit chance. Each shot stops at the first enemy hull or continues to the battlefield boundary.
-- Choose formations from the five persistent fleet-diagram buttons and visible bonus labels along the bottom edge.
-- Open upgrades from the sixth bottom-dock button, which also displays current salvage.
+- Drag any friendly ship in the lower quarter of the battlefield. Destinations snap to the visible five-unit grid, reject overlap, and save into the active loadout immediately.
+- Drag in the upper three quarters to aim the flagship's pulsed cannon. Partial charge is always usable, while an uninterrupted burst builds pulse damage and critical-hit chance.
+- Watch blast circles, strafing lanes, and focused firing lines. Completely evading a warning earns Tactical Edge for the next flagship burst.
+- Switch among up to three custom loadouts, or apply one of the five editable starter templates from the compact picker.
+- Read the live spread, cohesion, and flagship-screening bonuses in the command console. Open upgrades from its salvage button.
 - Escort ships fire automatically; the flagship only fires while you hold and aim its cannon.
 - Destroy attackers to earn salvage and advance to harder waves.
 - Boss barriers blunt automatic fire. Sweep the flagship gun across the boss to expose its hull, then capitalize before the barrier restores.
@@ -26,18 +28,19 @@ The interface is designed for touchscreens and also supports mouse input on desk
 The current prototype includes:
 
 - an edge-to-edge Three.js battlefield with full-height framing, adaptive horizontal combat bounds, and original procedural ships;
-- five animated formations and escalating enemy waves;
+- three persistent custom loadouts, five editable starter templates, a snap-grid editor, and physical formation maneuvers;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
-- automatic friendly fire and enemy pressure;
+- automatic friendly fire, basic enemy pressure, and position-resolved telegraphed major attacks;
 - a hold-and-aim pulsed flagship cannon with partial-charge firing, escalating burst damage and critical chance, proportional cooling, turret recoil, tracers, and first-contact impacts;
 - boss barriers that reward actively tracking the target with flagship fire;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
 - flagship-mounted energy lights, firing/cooling audio, and persistent in-world hull and shield bars;
-- an always-visible tactical dock with five formation icons, concise bonus text, and the salvage/upgrade control;
+- an always-visible formation console with live/preview geometry bonuses, loadout state, Tactical Edge, templates, and the salvage/upgrade control;
 - transient wave announcements plus readable flagship and boss status;
-- distinct formation mechanics: broad range, forward damage, damage mitigation, flank focus, and concentrated strikes;
+- geometry-derived range, side-target damage, fire-rate, flagship-damage, and flagship-screening strengths based on current ship positions;
+- three-stack Tactical Edge, earned by complete evasions and consumed by the next flagship burst for damage and critical chance;
 - eleven progressive upgrade branches, including a 250,000-salvage autonomous-gunnery end-game unlock;
-- persistent salvage, upgrade levels, highest-wave progress, and selected formation in `localStorage`;
+- version-two persistence for salvage, upgrade levels, highest-wave progress, all formation loadouts, and the active loadout, with automatic legacy-save migration;
 - capped offline patrol earnings with a clear return report;
 - fleet-size, durability, and visible shield upgrades that update the active formation immediately;
 - unlockable lancer and guardian ship classes with distinct silhouettes and combat stats;
@@ -71,11 +74,11 @@ The production output is written to `dist/`.
 - `src/progression/RunProgression.js` tracks the current run's lightweight rewards.
 - `src/progression/UpgradeSystem.js` owns progressive costs and mechanical upgrade effects.
 - `src/persistence/PersistenceStore.js` validates local saves and calculates capped offline earnings.
-- `src/formations/FormationSystem.js` owns layouts, transitions, and formation combat modifiers.
+- `src/formations/FormationSystem.js` owns custom loadouts, placement validation, physical maneuvers, and geometry-derived combat modifiers.
 - `src/rendering/GameRenderer.js` turns combat state into procedural Three.js visuals and effects.
 - `src/rendering/ObjectPool.js` reuses short-lived projectile and effect objects.
 - `src/audio/AudioManager.js` synthesizes original combat cues without downloaded assets.
-- `src/input/TargetingInput.js` maps touch and mouse pointer input into battlefield targeting orders.
+- `src/input/TargetingInput.js` routes touch and mouse gestures into lower-zone formation edits or upper-zone flagship targeting.
 - `src/ui/HudController.js` owns HUD, upgrades, deploy, defeat, and restart interactions.
 - `src/main.js` connects the simulation, renderer, input, progression, and UI modules.
 - `tests/` covers deterministic game rules.

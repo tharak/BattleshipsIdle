@@ -1,12 +1,32 @@
 export class TargetingInput {
-  constructor({ element, toWorld, onStart, onMove, onEnd }) {
+  constructor({
+    element,
+    toWorld,
+    isFormationPoint = () => false,
+    onFormationStart,
+    onFormationMove,
+    onFormationEnd,
+    onTargetStart,
+    onTargetMove,
+    onTargetEnd,
+    // Legacy callback names remain supported for small embedders and existing tests.
+    onStart,
+    onMove,
+    onEnd,
+  }) {
     this.element = element;
     this.toWorld = toWorld;
-    this.onStart = onStart;
-    this.onMove = onMove;
-    this.onEnd = onEnd;
+    this.isFormationPoint = isFormationPoint;
+    this.onFormationStart = onFormationStart;
+    this.onFormationMove = onFormationMove;
+    this.onFormationEnd = onFormationEnd;
+    this.onTargetStart = onTargetStart ?? onStart;
+    this.onTargetMove = onTargetMove ?? onMove;
+    this.onTargetEnd = onTargetEnd ?? onEnd;
     this.enabled = true;
     this.activePointerId = null;
+    this.activeMode = null;
+    this.lastWorldPoint = null;
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerEnd = this.handlePointerEnd.bind(this);
@@ -20,10 +40,17 @@ export class TargetingInput {
     if (!this.enabled || this.activePointerId !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
     const worldPoint = this.toWorld(event.clientX, event.clientY);
     if (!worldPoint) return;
+    const formationMode = Boolean(this.onFormationStart && this.isFormationPoint(worldPoint));
+    const mode = formationMode ? 'formation' : 'target';
+    const result = formationMode
+      ? this.onFormationStart(worldPoint)
+      : this.onTargetStart?.(worldPoint);
+    const accepted = formationMode ? result?.dragging : result?.firing;
+    if (!accepted) return;
     event.preventDefault();
-    const result = this.onStart(worldPoint);
-    if (!result?.firing) return;
     this.activePointerId = event.pointerId;
+    this.activeMode = mode;
+    this.lastWorldPoint = worldPoint;
     this.element.setPointerCapture?.(event.pointerId);
     if (globalThis.navigator?.vibrate) globalThis.navigator.vibrate(12);
   }
@@ -33,24 +60,39 @@ export class TargetingInput {
     const worldPoint = this.toWorld(event.clientX, event.clientY);
     if (!worldPoint) return;
     event.preventDefault();
-    this.onMove(worldPoint);
+    this.lastWorldPoint = worldPoint;
+    if (this.activeMode === 'formation') this.onFormationMove?.(worldPoint);
+    else this.onTargetMove?.(worldPoint);
   }
 
   handlePointerEnd(event) {
     if (event.pointerId !== this.activePointerId) return;
     event.preventDefault();
+    const point = this.toWorld(event.clientX, event.clientY) ?? this.lastWorldPoint;
+    const meta = { cancelled: event.type === 'pointercancel', mode: this.activeMode };
     this.element.releasePointerCapture?.(event.pointerId);
     this.activePointerId = null;
-    this.onEnd();
+    const mode = this.activeMode;
+    this.activeMode = null;
+    this.lastWorldPoint = null;
+    if (mode === 'formation') this.onFormationEnd?.(point, meta);
+    else this.onTargetEnd?.(point, meta);
+  }
+
+  cancelActivePointer() {
+    if (this.activePointerId === null) return;
+    this.element.releasePointerCapture?.(this.activePointerId);
+    const mode = this.activeMode;
+    this.activePointerId = null;
+    this.activeMode = null;
+    this.lastWorldPoint = null;
+    if (mode === 'formation') this.onFormationEnd?.(null, { cancelled: true, mode });
+    else this.onTargetEnd?.(null, { cancelled: true, mode });
   }
 
   setEnabled(enabled) {
     const nextEnabled = Boolean(enabled);
-    if (!nextEnabled && this.activePointerId !== null) {
-      this.element.releasePointerCapture?.(this.activePointerId);
-      this.activePointerId = null;
-      this.onEnd();
-    }
+    if (!nextEnabled) this.cancelActivePointer();
     this.enabled = nextEnabled;
   }
 

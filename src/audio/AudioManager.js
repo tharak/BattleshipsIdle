@@ -227,10 +227,23 @@ export class AudioManager {
         ]);
         break;
       case 'formationChanged':
+      case 'formationShipMoved':
+      case 'loadoutActivated':
         this.sequence([
           { frequency: 260, endFrequency: 390, duration: 0.12, gain: 0.023, type: 'triangle' },
           { delay: 95, frequency: 390, endFrequency: 560, duration: 0.16, gain: 0.026, type: 'sine' },
         ]);
+        break;
+      case 'telegraphStarted':
+        if (this.canPlay('telegraph-warning', 280)) {
+          this.tone({ frequency: event.kind === 'blast' ? 260 : 340, endFrequency: 190, duration: 0.22, gain: 0.024, type: 'square' });
+        }
+        break;
+      case 'telegraphEvaded':
+        this.tone({ frequency: 560, endFrequency: 960, duration: 0.2, gain: 0.03, type: 'sine' });
+        break;
+      case 'tacticalEdgeConsumed':
+        this.tone({ frequency: 480, endFrequency: 1240, duration: 0.26, gain: 0.038, type: 'triangle' });
         break;
       case 'shopOpened':
         this.tone({ frequency: 340, endFrequency: 530, duration: 0.13, gain: 0.021, type: 'triangle' });

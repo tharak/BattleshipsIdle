@@ -3,7 +3,10 @@ import {
   ENEMIES,
   FLEET,
   FLAGSHIP_GUN,
+  FORMATION_EDITOR,
   SIMULATION,
+  TACTICAL_EDGE,
+  TELEGRAPH_ATTACKS,
   WAVES,
   getEnemyStats,
   getWaveEnemyCount,
@@ -28,6 +31,21 @@ function distanceSquared(a, b) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return dx * dx + dy * dy;
+}
+
+function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const progress = clamp(
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared,
+    0,
+    1,
+  );
+  return Math.hypot(
+    point.x - (start.x + dx * progress),
+    point.y - (start.y + dy * progress),
+  );
 }
 
 function normalizedVelocity(from, to, speed) {
@@ -60,12 +78,19 @@ export class GameSimulation {
     random = Math.random,
     progressionState = {},
     selectedFormation = 'line',
+    formationLoadouts,
+    activeLoadoutIndex = 0,
     onStateChange = () => {},
   } = {}) {
     this.random = random;
     this.onStateChange = onStateChange;
     this.progression = new RunProgression({ state: progressionState, onChange: onStateChange });
-    this.formationSystem = new FormationSystem(selectedFormation);
+    this.formationSystem = new FormationSystem({
+      initialTemplateId: selectedFormation,
+      loadouts: formationLoadouts,
+      activeLoadoutIndex,
+      commandNetworkLevel: this.progression.upgrades.commandNetworkLevel,
+    });
     this.nextId = 1;
     this.events = [];
     this.arena = { ...ARENA };
@@ -86,11 +111,15 @@ export class GameSimulation {
     this.flagshipGunPulseAccumulator = 0;
     this.flagshipGunPulseIndex = 0;
     this.flagshipGunBurstIndex = 0;
-    this.formationSystem.transitionRemaining = 0;
+    this.flagshipBurstTacticalStacks = 0;
+    this.tacticalEdgeStacks = 0;
     this.formationSystem.cooldownRemaining = 0;
+    this.formationSystem.movingSlots.clear();
+    this.formationSystem.dragState = null;
     this.friendlies = this.createFleet();
     this.enemies = [];
     this.projectiles = [];
+    this.telegraphs = [];
     this.events = [];
     this.progression.resetRun();
   }
@@ -136,6 +165,9 @@ export class GameSimulation {
       damage: roleStats.damage * this.progression.upgrades.shipDamageMultiplier,
       fireInterval: roleStats.fireInterval,
       fireCooldown: this.random() * 0.5,
+      targetX: 0,
+      targetY: ARENA.commandY,
+      moving: false,
       alive: true,
     };
   }
@@ -144,6 +176,7 @@ export class GameSimulation {
     this.wave += 1;
     this.waveResolved = false;
     this.waveIntermission = 0;
+    this.telegraphs = [];
     const stats = getEnemyStats(this.wave);
     const bossWave = isBossWave(this.wave);
     const count = bossWave ? 3 : getWaveEnemyCount(this.wave);
@@ -172,7 +205,8 @@ export class GameSimulation {
           fireInterval: BOSS.fireInterval, fireCooldown: 1.15,
           reward: Math.round(BOSS.reward * (1 + tier * 0.35)),
           attackType: 'area', areaRadius: BOSS.areaRadius, scale: 2.35,
-          exposedRemaining: 0, alive: true,
+          majorAttack: 'boss', majorCooldown: TELEGRAPH_ATTACKS.initialDelay,
+          majorPatternIndex: 0, exposedRemaining: 0, alive: true,
         };
       }
 
@@ -208,6 +242,10 @@ export class GameSimulation {
         fireCooldown: 0.8 + this.random() * stats.fireInterval,
         reward: stats.reward * type.reward * eliteReward,
         attackType: type.attackType,
+        majorAttack: type.majorAttack ?? null,
+        majorCooldown: type.majorAttack
+          ? TELEGRAPH_ATTACKS.initialDelay + this.random() * TELEGRAPH_ATTACKS.repeatJitter
+          : Infinity,
         areaRadius: type.areaRadius ?? 0,
         scale: type.scale * (elite ? 1.22 : 1),
         exposedRemaining: 0,
@@ -248,6 +286,7 @@ export class GameSimulation {
 
     this.updateFriendlies(dt);
     this.updateEnemies(dt);
+    this.updateTelegraphs(dt);
     this.updateProjectiles(dt);
     this.removeDestroyedEntities();
     this.resolveWaveIfNeeded();
@@ -263,15 +302,14 @@ export class GameSimulation {
       if (!target) continue;
 
       ship.fireCooldown += ship.fireInterval
-        / this.formationSystem.current.fireRate
+        / this.formationSystem.getFireRateMultiplier(this.friendlies)
         / this.progression.upgrades.autoFireRateMultiplier;
       this.spawnProjectile(ship, target, {
         faction: 'friendly',
         speed: FLEET.projectileSpeed,
         lifetime: FLEET.projectileLifetime,
         damage: ship.damage
-          * this.formationSystem.getAutoDamageMultiplier(target)
-          * this.progression.upgrades.formationMasteryMultiplier,
+          * this.formationSystem.getAutoDamageMultiplier(target, this.friendlies),
       });
     }
   }
@@ -304,6 +342,14 @@ export class GameSimulation {
       }
 
       enemy.fireCooldown -= dt;
+      if (enemy.majorAttack && enemy.y <= ENEMIES.fireThresholdY) {
+        enemy.majorCooldown -= dt;
+        if (enemy.majorCooldown <= 0) {
+          this.beginEnemyMajorAttack(enemy);
+          enemy.majorCooldown += TELEGRAPH_ATTACKS.repeatDelay
+            + this.random() * TELEGRAPH_ATTACKS.repeatJitter;
+        }
+      }
       if (enemy.y > ENEMIES.fireThresholdY || enemy.fireCooldown > 0) continue;
 
       const target = this.pickEnemyTarget(enemy);
@@ -315,8 +361,109 @@ export class GameSimulation {
         speed: ENEMIES.projectileSpeed,
         lifetime: ENEMIES.projectileLifetime,
         damage: enemy.damage,
-        areaRadius: enemy.areaRadius,
+        areaRadius: 0,
       });
+    }
+  }
+
+  beginEnemyMajorAttack(enemy) {
+    const majorAttack = enemy.majorAttack ?? (enemy.boss ? 'boss' : null);
+    if (!majorAttack) return;
+    const patterns = majorAttack === 'boss'
+      ? [
+          ['artillery'],
+          ['skirmisher'],
+          ['bulwark'],
+          ['artillery', 'skirmisher'],
+        ][enemy.majorPatternIndex++ % 4]
+      : [majorAttack];
+    for (const pattern of patterns) this.createTelegraph(enemy, pattern);
+  }
+
+  createTelegraph(enemy, pattern) {
+    const target = this.pickEnemyTarget(enemy);
+    if (!target) return null;
+    const definition = TELEGRAPH_ATTACKS[pattern];
+    const warning = enemy.boss ? TELEGRAPH_ATTACKS.boss.warning : definition.warning;
+    const damageMultiplier = enemy.boss
+      ? TELEGRAPH_ATTACKS.boss.damageMultiplier
+      : definition.damageMultiplier;
+    const telegraph = {
+      id: `telegraph-${this.nextId++}`,
+      sourceEnemyId: enemy.id,
+      sourceRole: enemy.role,
+      kind: definition.kind,
+      remaining: warning,
+      duration: warning,
+      damage: enemy.damage * damageMultiplier,
+    };
+    if (definition.kind === 'blast') {
+      Object.assign(telegraph, { x: target.x, y: target.y, radius: definition.radius });
+    } else {
+      const direction = normalizedVelocity(enemy, target, 1);
+      const end = {
+        x: enemy.x + direction.vx * 220,
+        y: enemy.y + direction.vy * 220,
+      };
+      Object.assign(telegraph, {
+        source: { x: enemy.x, y: enemy.y },
+        target: end,
+        width: definition.width,
+        lockedTargetId: target.id,
+      });
+    }
+    this.telegraphs.push(telegraph);
+    this.emit('telegraphStarted', { ...telegraph });
+    return telegraph;
+  }
+
+  updateTelegraphs(dt) {
+    const active = [];
+    for (const telegraph of this.telegraphs) {
+      telegraph.remaining -= dt;
+      if (telegraph.remaining > 0) {
+        active.push(telegraph);
+        continue;
+      }
+      this.resolveTelegraph(telegraph);
+      if (this.status !== 'running') break;
+    }
+    this.telegraphs = this.status === 'running' ? active : [];
+  }
+
+  resolveTelegraph(telegraph) {
+    const targets = this.friendlies.filter((ship) => ship.alive);
+    const hitTargets = targets.filter((ship) => {
+      if (telegraph.kind === 'blast') {
+        return distanceSquared(ship, telegraph) <= telegraph.radius ** 2;
+      }
+      return distanceToSegment(ship, telegraph.source, telegraph.target) <= telegraph.width / 2;
+    });
+    for (const target of hitTargets) this.damageEntity(target, telegraph.damage, `telegraph-${telegraph.kind}`);
+    this.emit('telegraphResolved', {
+      ...telegraph,
+      hitIds: hitTargets.map((target) => target.id),
+      evaded: hitTargets.length === 0,
+    });
+    if (telegraph.kind === 'blast') {
+      this.emit('areaImpact', {
+        x: telegraph.x,
+        y: telegraph.y,
+        radius: telegraph.radius,
+        faction: 'enemy',
+      });
+    }
+    if (hitTargets.length === 0 && this.status === 'running' && !this.waveResolved) {
+      this.grantTacticalEdge(telegraph);
+    }
+  }
+
+  grantTacticalEdge(telegraph) {
+    const previous = this.tacticalEdgeStacks;
+    this.tacticalEdgeStacks = Math.min(TACTICAL_EDGE.maximumStacks, previous + 1);
+    this.emit('telegraphEvaded', { id: telegraph.id, kind: telegraph.kind });
+    if (this.tacticalEdgeStacks !== previous) {
+      this.emit('tacticalEdgeChanged', { stacks: this.tacticalEdgeStacks, gained: 1 });
     }
   }
 
@@ -403,7 +550,20 @@ export class GameSimulation {
     this.flagshipGunAim = aim;
     this.flagshipGunPulseAccumulator = 0;
     this.flagshipGunBurstIndex = 0;
-    this.emit('flagshipGunStarted', { ...aim, automatic });
+    this.flagshipBurstTacticalStacks = this.tacticalEdgeStacks;
+    if (this.flagshipBurstTacticalStacks > 0) {
+      this.tacticalEdgeStacks = 0;
+      this.emit('tacticalEdgeConsumed', {
+        stacks: this.flagshipBurstTacticalStacks,
+        damageBonus: this.flagshipBurstTacticalStacks * TACTICAL_EDGE.damagePerStack,
+        criticalChanceBonus: this.flagshipBurstTacticalStacks * TACTICAL_EDGE.criticalChancePerStack,
+      });
+    }
+    this.emit('flagshipGunStarted', {
+      ...aim,
+      automatic,
+      tacticalEdgeStacks: this.flagshipBurstTacticalStacks,
+    });
     this.fireAndConsumeFlagshipGunPulse();
     return { firing: true, automatic, target: aim };
   }
@@ -438,6 +598,7 @@ export class GameSimulation {
       rechargeRemaining: this.getFlagshipGunRechargeRemaining(),
     });
     this.flagshipGunBurstIndex = 0;
+    this.flagshipBurstTacticalStacks = 0;
     return true;
   }
 
@@ -491,7 +652,8 @@ export class GameSimulation {
 
   fireFlagshipGunPulse(energyFraction = 1) {
     const formation = this.formationSystem.current;
-    const shotHalfWidth = FLAGSHIP_GUN.shotHalfWidth * formation.gunWidth;
+    const formationModifiers = this.formationSystem.getModifiers(this.friendlies);
+    const shotHalfWidth = FLAGSHIP_GUN.shotHalfWidth;
     const maximumBurstPulses = Math.round(FLAGSHIP_GUN.firingDuration / FLAGSHIP_GUN.pulseInterval);
     this.flagshipGunBurstIndex += 1;
     const burstProgress = maximumBurstPulses <= 1
@@ -499,13 +661,21 @@ export class GameSimulation {
       : clamp((this.flagshipGunBurstIndex - 1) / (maximumBurstPulses - 1), 0, 1);
     const damageMultiplier = FLAGSHIP_GUN.burstStartDamageMultiplier
       + (FLAGSHIP_GUN.burstEndDamageMultiplier - FLAGSHIP_GUN.burstStartDamageMultiplier) * burstProgress;
-    const criticalChance = FLAGSHIP_GUN.criticalStartChance
+    const baseCriticalChance = FLAGSHIP_GUN.criticalStartChance
       + (FLAGSHIP_GUN.criticalEndChance - FLAGSHIP_GUN.criticalStartChance) * burstProgress;
+    const tacticalDamageMultiplier = 1
+      + this.flagshipBurstTacticalStacks * TACTICAL_EDGE.damagePerStack;
+    const criticalChance = clamp(
+      baseCriticalChance
+        + this.flagshipBurstTacticalStacks * TACTICAL_EDGE.criticalChancePerStack,
+      0,
+      1,
+    );
     const pulseDamage = FLAGSHIP_GUN.damagePerSecond * FLAGSHIP_GUN.pulseInterval
-      * formation.gunDamage
+      * (1 + formationModifiers.flagshipDamageBonus)
       * this.progression.upgrades.volleyDamageMultiplier
-      * this.progression.upgrades.formationMasteryMultiplier
       * damageMultiplier
+      * tacticalDamageMultiplier
       * energyFraction;
     const flagship = this.getCommandShip();
     const source = { x: flagship?.x ?? 0, y: flagship?.y ?? ARENA.commandY };
@@ -557,6 +727,8 @@ export class GameSimulation {
       pulseIndex: this.flagshipGunPulseIndex,
       burstIndex: this.flagshipGunBurstIndex,
       damageMultiplier,
+      tacticalDamageMultiplier,
+      tacticalEdgeStacks: this.flagshipBurstTacticalStacks,
       criticalChance,
       critical,
       energyFraction,
@@ -582,16 +754,90 @@ export class GameSimulation {
     if (!['ready', 'running', 'paused'].includes(this.status)) {
       return { changed: false, reason: 'inactive' };
     }
-    const result = this.formationSystem.changeTo(formationId, this.friendlies, {
-      ignoreCooldown: this.status === 'ready',
+    const ignoreCooldown = this.status === 'ready' || this.waveResolved;
+    const result = this.formationSystem.applyTemplate(formationId, this.friendlies, {
+      ignoreCooldown,
     });
     if (result.changed) {
       this.emit('formationChanged', {
         formationId,
-        formation: result.formation,
+        formation: result.formation ?? this.formationSystem.current,
         paths: result.paths,
       });
       this.onStateChange();
+    }
+    return result;
+  }
+
+  activateFormationLoadout(index) {
+    if (!['ready', 'running', 'paused'].includes(this.status)) {
+      return { changed: false, reason: 'inactive' };
+    }
+    const ignoreCooldown = this.status === 'ready' || this.waveResolved;
+    const result = this.formationSystem.activateLoadout(index, this.friendlies, { ignoreCooldown });
+    if (result.changed) {
+      this.emit('loadoutActivated', {
+        loadoutIndex: result.loadoutIndex,
+        loadout: result.loadout,
+        paths: result.paths,
+      });
+      this.onStateChange();
+    }
+    return result;
+  }
+
+  applyFormationTemplate(templateId) {
+    return this.changeFormation(templateId);
+  }
+
+  isFormationEditingPoint(y) {
+    return this.formationSystem.isFleetZonePoint(y);
+  }
+
+  beginShipDrag(x, y) {
+    if (!['running', 'ready'].includes(this.status) || this.suspended) {
+      return { dragging: false, reason: 'inactive' };
+    }
+    const candidates = this.friendlies
+      .filter((ship) => ship.alive)
+      .map((ship) => ({ ship, distance: Math.hypot(ship.x - x, ship.y - y) }))
+      .filter(({ distance: separation }) => separation <= FORMATION_EDITOR.shipPickRadius)
+      .sort((left, right) => left.distance - right.distance);
+    const ship = candidates[0]?.ship;
+    if (!ship) return { dragging: false, reason: 'no-ship' };
+    const preview = this.formationSystem.previewPlacement(ship.slot, ship.x, ship.y, this.friendlies);
+    this.emit('formationDragStarted', { shipId: ship.id, slot: ship.slot });
+    return { dragging: true, shipId: ship.id, slot: ship.slot, preview };
+  }
+
+  previewShipDrag(x, y) {
+    if (!this.formationSystem.dragState) return { dragging: false, reason: 'no-drag' };
+    const preview = this.formationSystem.previewPlacement(
+      this.formationSystem.dragState.slot,
+      x,
+      y,
+      this.friendlies,
+    );
+    this.emit('formationDragPreviewed', { ...preview });
+    return { dragging: true, preview };
+  }
+
+  commitShipDrag({ cancelled = false } = {}) {
+    const result = cancelled
+      ? this.formationSystem.cancelPlacement()
+      : this.formationSystem.commitPlacement(this.friendlies);
+    if (result.changed) {
+      this.emit('formationShipMoved', {
+        slot: result.slot,
+        position: result.position,
+        paths: result.path ? [result.path] : [],
+      });
+      this.onStateChange();
+    } else if (result.reason !== 'cancelled') {
+      this.emit('formationPlacementRejected', {
+        reason: result.reason,
+        candidate: result.preview?.candidate,
+      });
     }
     return result;
   }
@@ -608,12 +854,15 @@ export class GameSimulation {
   }
 
   applyFleetUpgrades(purchasedId) {
+    this.formationSystem.setCommandNetworkLevel(this.progression.upgrades.commandNetworkLevel);
     const desiredCount = this.progression.upgrades.fleetSize;
-    while (this.friendlies.length < desiredCount) {
-      const slot = this.friendlies.length;
-      const ship = this.createFriendly(this.getFleetRole(slot), slot);
-      this.friendlies.push(ship);
-      this.emit('friendlyJoined', { id: ship.id, x: ship.x, y: ship.y });
+    if (purchasedId === 'fleetSize') {
+      const slot = desiredCount - 1;
+      if (!this.friendlies.some((ship) => ship.slot === slot)) {
+        const ship = this.createFriendly(this.getFleetRole(slot), slot);
+        this.friendlies.push(ship);
+        this.emit('friendlyJoined', { id: ship.id, x: ship.x, y: ship.y });
+      }
     }
 
     for (const ship of this.friendlies) {
@@ -642,6 +891,7 @@ export class GameSimulation {
   openShop() {
     if (!['ready', 'running', 'paused', 'gameOver'].includes(this.status)) return false;
     this.cancelFlagshipFire('shop-opened');
+    if (this.formationSystem.dragState) this.commitShipDrag({ cancelled: true });
     this.preShopStatus = this.status;
     this.status = 'shopping';
     this.emit('shopOpened', {});
@@ -678,8 +928,7 @@ export class GameSimulation {
   damageEntity(entity, amount, source, { critical = false } = {}) {
     if (!entity?.alive || amount <= 0) return;
     let adjustedAmount = entity.faction === 'friendly'
-      ? amount * this.formationSystem.getIncomingDamageMultiplier()
-        / this.progression.upgrades.formationMasteryMultiplier
+      ? amount * this.formationSystem.getIncomingDamageMultiplier(entity, this.friendlies)
       : amount;
     if (entity.boss && source === 'projectile' && entity.exposedRemaining <= 0) {
       adjustedAmount *= 1 - BOSS.barrierReduction;
@@ -736,6 +985,8 @@ export class GameSimulation {
     if (this.status !== 'running' || this.waveResolved || this.enemies.some((enemy) => enemy.alive)) return;
     this.waveResolved = true;
     this.waveIntermission = WAVES.intermission;
+    for (const telegraph of this.telegraphs) this.emit('telegraphCancelled', { id: telegraph.id });
+    this.telegraphs = [];
     const reward = WAVES.clearRewardBase + this.wave * 3;
     const creditedReward = this.progression.recordWaveCleared(this.wave, reward);
     this.emit('waveCleared', { wave: this.wave, reward: creditedReward });
@@ -746,6 +997,9 @@ export class GameSimulation {
     this.cancelFlagshipFire('game-over');
     this.status = 'gameOver';
     this.projectiles = [];
+    this.telegraphs = [];
+    this.tacticalEdgeStacks = 0;
+    this.flagshipBurstTacticalStacks = 0;
     this.emit('gameOver', {
       wave: this.wave,
       progression: this.progression.snapshot(),
@@ -754,6 +1008,8 @@ export class GameSimulation {
 
   togglePause() {
     if (this.status === 'running') {
+      this.cancelFlagshipFire('paused');
+      if (this.formationSystem.dragState) this.commitShipDrag({ cancelled: true });
       this.status = 'paused';
       this.emit('paused', {});
       return true;
@@ -787,17 +1043,13 @@ export class GameSimulation {
 
   findAutoTarget(source) {
     const range = FLEET.effectiveRange
-      * this.formationSystem.current.range
-      * this.progression.upgrades.formationMasteryMultiplier;
-    if (this.formationSystem.currentId !== 'splitWings') {
-      return this.findNearest(source, this.enemies, range);
-    }
+      * this.formationSystem.getRangeMultiplier(this.friendlies);
 
     const candidates = this.enemies
       .filter((enemy) => enemy.alive && distanceSquared(source, enemy) <= range * range)
       .sort((left, right) => {
-        const leftSide = Math.abs(left.x) >= 19 ? 0 : 1;
-        const rightSide = Math.abs(right.x) >= 19 ? 0 : 1;
+        const leftSide = Math.abs(left.x) >= this.arena.maxX * 0.42 ? 0 : 1;
+        const rightSide = Math.abs(right.x) >= this.arena.maxX * 0.42 ? 0 : 1;
         return leftSide - rightSide || distanceSquared(source, left) - distanceSquared(source, right);
       });
     return candidates[0] ?? null;
@@ -868,8 +1120,19 @@ export class GameSimulation {
       friendlies: this.friendlies,
       enemies: this.enemies,
       projectiles: this.projectiles,
+      telegraphs: this.telegraphs.map((telegraph) => ({
+        ...telegraph,
+        progress: 1 - telegraph.remaining / telegraph.duration,
+      })),
+      tacticalEdge: {
+        stacks: this.tacticalEdgeStacks,
+        maximumStacks: TACTICAL_EDGE.maximumStacks,
+        activeBurstStacks: this.flagshipBurstTacticalStacks,
+        damagePerStack: TACTICAL_EDGE.damagePerStack,
+        criticalChancePerStack: TACTICAL_EDGE.criticalChancePerStack,
+      },
       progression: this.progression.snapshot(),
-      formation: this.formationSystem.snapshot(),
+      formation: this.formationSystem.snapshot(this.friendlies),
       arena: { ...this.arena },
     };
   }
@@ -890,7 +1153,8 @@ export class GameSimulation {
     if (!bounds) return;
     const halfWidth = Math.max(28, Math.min(104, Number(bounds.halfWidth) || ARENA.maxX));
     this.arena = { ...ARENA, minX: -halfWidth, maxX: halfWidth, width: halfWidth * 2 };
-    this.formationSystem.setViewportLayout(halfWidth / ARENA.maxX, Number(bounds.fleetOffsetY) || 0, this.friendlies);
+    this.formationSystem.setArena(this.arena);
+    this.formationSystem.reflow(this.friendlies);
     for (const enemy of this.enemies) {
       enemy.originX = clamp(enemy.originX, this.arena.minX + 3, this.arena.maxX - 3);
       enemy.x = clamp(enemy.x, this.arena.minX + 3, this.arena.maxX - 3);
@@ -901,7 +1165,8 @@ export class GameSimulation {
   getPersistentState() {
     return {
       ...this.progression.exportState(),
-      selectedFormation: this.formationSystem.currentId,
+      formationLoadouts: this.formationSystem.exportLoadouts(),
+      activeLoadoutIndex: this.formationSystem.activeLoadoutIndex,
     };
   }
 

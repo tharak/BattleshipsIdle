@@ -115,7 +115,7 @@ describe('GameSimulation', () => {
     simulation.consumeEvents();
     const command = simulation.getCommandShip();
 
-    simulation.damageEntity(command, command.maxHealth, 'test');
+    simulation.damageEntity(command, command.maxHealth * 2, 'test');
 
     expect(simulation.getSnapshot().status).toBe('gameOver');
     expect(simulation.consumeEvents().some((event) => event.type === 'gameOver')).toBe(true);
@@ -393,9 +393,11 @@ describe('GameSimulation', () => {
     simulation.startRun();
     const command = simulation.getCommandShip();
 
+    const reduction = simulation.getSnapshot().formation.modifiers.flagshipDamageReduction;
     simulation.damageEntity(command, 100, 'test');
 
-    expect(command.maxHealth - command.health).toBeCloseTo(68);
+    expect(reduction).toBeGreaterThan(0);
+    expect(command.maxHealth - command.health).toBeCloseTo(100 * (1 - reduction));
   });
 
   it('makes dense-column flagship gun pulses stronger', () => {
@@ -461,6 +463,23 @@ describe('GameSimulation', () => {
     expect(simulation.friendlies[0].maxShield).toBeGreaterThan(0);
     expect(simulation.friendlies).toHaveLength(8);
     expect(simulation.getPersistentState().currency).toBeLessThan(1000);
+  });
+
+  it('does not respawn destroyed slots when purchasing non-fleet upgrades', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { currency: 1000 },
+    });
+    simulation.startRun();
+    simulation.friendlies[0].alive = false;
+    simulation.removeDestroyedEntities();
+    const survivingSlots = simulation.friendlies.map(({ slot }) => slot);
+
+    expect(simulation.purchaseUpgrade('commandNetwork').purchased).toBe(true);
+    simulation.update(1 / 60);
+
+    expect(simulation.friendlies.map(({ slot }) => slot)).toEqual(survivingSlots);
+    expect(simulation.friendlies.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
   });
 
   it('uses shields before hull integrity', () => {
@@ -554,6 +573,156 @@ describe('GameSimulation', () => {
     expect(simulation.friendlies).toHaveLength(9);
     expect(simulation.friendlies.some((ship) => ship.role === 'lancer')).toBe(true);
     expect(simulation.friendlies.some((ship) => ship.role === 'guardian')).toBe(true);
+  });
+
+  it('edits the active loadout live, moves the flagship, and rejects invalid drops', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const command = simulation.getCommandShip();
+    const originalY = command.y;
+
+    expect(simulation.beginShipDrag(command.x, command.y).dragging).toBe(true);
+    expect(simulation.previewShipDrag(0, -50).preview.valid).toBe(true);
+    expect(simulation.commitShipDrag().changed).toBe(true);
+    advance(simulation, 0.2);
+    expect(command.y).toBeGreaterThan(originalY);
+    expect(simulation.getPersistentState().formationLoadouts[0].slots.find(({ slot }) => slot === command.slot))
+      .toMatchObject({ x: 0, y: -50 });
+
+    const escort = simulation.friendlies[0];
+    const occupied = simulation.getPersistentState().formationLoadouts[0].slots[1];
+    expect(simulation.beginShipDrag(escort.x, escort.y).dragging).toBe(true);
+    expect(simulation.previewShipDrag(occupied.x, occupied.y).preview.valid).toBe(false);
+    expect(simulation.commitShipDrag()).toMatchObject({ changed: false, reason: 'overlap' });
+  });
+
+  it('unlocks three loadouts and ignores their cooldown during intermissions', () => {
+    const simulation = new GameSimulation({
+      random: () => 0.5,
+      progressionState: { upgrades: { commandNetwork: 3 } },
+    });
+    simulation.startRun();
+
+    expect(simulation.activateFormationLoadout(1).changed).toBe(true);
+    expect(simulation.activateFormationLoadout(2)).toMatchObject({ changed: false, reason: 'cooldown' });
+    simulation.waveResolved = true;
+    simulation.waveIntermission = 1;
+    expect(simulation.activateFormationLoadout(2).changed).toBe(true);
+    expect(simulation.getSnapshot().formation.activeLoadoutIndex).toBe(2);
+  });
+
+  it('creates blast circles, strafing lanes, focused lines, and combined boss warnings', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const source = { id: 'major', role: 'boss', x: 0, y: 45, damage: 20, boss: true, majorPatternIndex: 3 };
+
+    const blast = simulation.createTelegraph(source, 'artillery');
+    const lane = simulation.createTelegraph(source, 'skirmisher');
+    const focus = simulation.createTelegraph(source, 'bulwark');
+    expect(blast).toMatchObject({ kind: 'blast', radius: 11 });
+    expect(lane).toMatchObject({ kind: 'lane', width: 8 });
+    expect(focus).toMatchObject({ kind: 'focus', width: 4.8 });
+    expect(blast.duration).toBeGreaterThan(1);
+
+    simulation.telegraphs = [];
+    simulation.beginEnemyMajorAttack(source);
+    expect(simulation.telegraphs.map(({ kind }) => kind).sort()).toEqual(['blast', 'lane']);
+  });
+
+  it('resolves warnings against impact-time positions and caps Tactical Edge at three', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const source = { id: 'artillery', role: 'artillery', x: 0, y: 45, damage: 20, boss: false };
+    const command = simulation.getCommandShip();
+    const hullBefore = command.health;
+
+    const hit = simulation.createTelegraph(source, 'artillery');
+    hit.x = command.x;
+    hit.y = command.y;
+    simulation.resolveTelegraph(hit);
+    expect(command.health).toBeLessThan(hullBefore);
+    expect(simulation.getSnapshot().tacticalEdge.stacks).toBe(0);
+
+    for (let attack = 0; attack < 5; attack += 1) {
+      simulation.friendlies.forEach((ship) => { ship.x = ship.targetX; ship.y = ship.targetY; });
+      const evaded = simulation.createTelegraph(source, 'artillery');
+      simulation.friendlies.forEach((ship) => { ship.x = 35; ship.y = -65; });
+      simulation.resolveTelegraph(evaded);
+    }
+    expect(simulation.getSnapshot().tacticalEdge.stacks).toBe(3);
+    expect(simulation.consumeEvents().filter((event) => event.type === 'telegraphEvaded')).toHaveLength(5);
+  });
+
+  it('consumes all Tactical Edge stacks at burst start for damage and critical chance', () => {
+    const baseline = createSimulation();
+    baseline.startRun();
+    const [baselineTarget, ...baselineOthers] = baseline.enemies;
+    Object.assign(baselineTarget, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
+    baselineOthers.forEach((enemy) => { enemy.x = 40; });
+    baseline.consumeEvents();
+    baseline.beginFlagshipFire(baselineTarget.x, baselineTarget.y);
+    const baselinePulse = baseline.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+
+    const simulation = createSimulation();
+    simulation.startRun();
+    const [target, ...others] = simulation.enemies;
+    Object.assign(target, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
+    others.forEach((enemy) => { enemy.x = 40; });
+    simulation.tacticalEdgeStacks = 3;
+    simulation.consumeEvents();
+
+    simulation.beginFlagshipFire(target.x, target.y);
+    const pulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+
+    expect(pulse.tacticalEdgeStacks).toBe(3);
+    expect(pulse.tacticalDamageMultiplier).toBeCloseTo(1.36);
+    expect(pulse.damage).toBeCloseTo(baselinePulse.damage * 1.36);
+    expect(pulse.criticalChance).toBeCloseTo(FLAGSHIP_GUN.criticalStartChance + 0.24);
+    expect(simulation.getSnapshot().tacticalEdge.stacks).toBe(0);
+  });
+
+  it('adds Tactical Edge critical chance to the first pulse', () => {
+    const simulation = new GameSimulation({ random: () => 0.2 });
+    simulation.startRun();
+    const [target, ...others] = simulation.enemies;
+    Object.assign(target, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
+    others.forEach((enemy) => { enemy.x = 40; });
+    simulation.tacticalEdgeStacks = 3;
+    simulation.consumeEvents();
+
+    simulation.beginFlagshipFire(target.x, target.y);
+    const pulse = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    expect(FLAGSHIP_GUN.criticalStartChance).toBeLessThan(0.2);
+    expect(pulse.criticalChance).toBeGreaterThan(0.2);
+    expect(pulse.critical).toBe(true);
+  });
+
+  it('cancels formation editing when combat pauses or ends', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    const ship = simulation.friendlies[0];
+    expect(simulation.beginShipDrag(ship.x, ship.y).dragging).toBe(true);
+
+    expect(simulation.togglePause()).toBe(true);
+    expect(simulation.getSnapshot().formation.preview).toBeNull();
+    expect(simulation.beginShipDrag(ship.x, ship.y)).toMatchObject({ dragging: false, reason: 'inactive' });
+
+    simulation.togglePause();
+    simulation.damageEntity(simulation.getCommandShip(), 10000, 'test');
+    expect(simulation.beginShipDrag(ship.x, ship.y)).toMatchObject({ dragging: false, reason: 'inactive' });
+  });
+
+  it('keeps Tactical Edge between waves but resets it with the run', () => {
+    const simulation = createSimulation();
+    simulation.startRun();
+    simulation.tacticalEdgeStacks = 2;
+    simulation.enemies = [];
+    simulation.wave = 1;
+    simulation.beginNextWave();
+    expect(simulation.getSnapshot().tacticalEdge.stacks).toBe(2);
+
+    simulation.restartRun();
+    expect(simulation.getSnapshot().tacticalEdge.stacks).toBe(0);
   });
 
 });

@@ -8,7 +8,7 @@ export const UPGRADE_ORDER = Object.freeze([
   'shieldStrength',
   'resourceGeneration',
   'offlineEarnings',
-  'formationMastery',
+  'commandNetwork',
   'automatedGunnery',
 ]);
 
@@ -52,9 +52,12 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
     id: 'offlineEarnings', name: 'Offline earnings', icon: '◌', maxLevel: 10, baseCost: 95, costGrowth: 1.6,
     describe: (level) => `+${level * 25}% offline yield`,
   }),
-  formationMastery: Object.freeze({
-    id: 'formationMastery', name: 'Formation doctrine', icon: '⌘', maxLevel: 12, baseCost: 125, costGrowth: 1.64,
-    describe: (level) => `+${level * 5}% formation strengths`,
+  commandNetwork: Object.freeze({
+    id: 'commandNetwork', name: 'Command network', icon: '⌘', maxLevel: 12, baseCost: 125, costGrowth: 1.64,
+    describe: (level) => {
+      const loadouts = 1 + (level >= 1 ? 1 : 0) + (level >= 3 ? 1 : 0);
+      return `${loadouts} loadout${loadouts === 1 ? '' : 's'} · +${level * 4.5}% maneuver · +${(level * 0.75).toFixed(level % 4 === 0 ? 0 : 2)} placement`;
+    },
   }),
   automatedGunnery: Object.freeze({
     id: 'automatedGunnery', name: 'Autonomous gunnery', icon: '◉', maxLevel: 1, baseCost: 250000, costGrowth: 1,

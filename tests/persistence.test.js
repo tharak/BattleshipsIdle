@@ -3,6 +3,7 @@ import {
   PersistenceStore,
   calculateOfflineEarnings,
   createDefaultSave,
+  migrateSave,
 } from '../src/persistence/PersistenceStore.js';
 
 class MemoryStorage {
@@ -62,5 +63,22 @@ describe('offline progression', () => {
     expect(offline.earned).toBeGreaterThan(0);
     expect(state.currency).toBe(25 + offline.earned);
     expect(JSON.parse(storage.value).lastSeen).toBe(now);
+    expect(JSON.parse(storage.value).version).toBe(2);
+  });
+
+  it('migrates a legacy formation and doctrine levels into version two', () => {
+    const migrated = migrateSave({
+      version: 1,
+      selectedFormation: 'splitWings',
+      upgrades: { formationMastery: 3 },
+    });
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.activeLoadoutIndex).toBe(0);
+    expect(migrated.formationLoadouts).toHaveLength(3);
+    expect(migrated.formationLoadouts[0].templateId).toBe('splitWings');
+    expect(migrated.formationLoadouts[1].templateId).not.toBe('splitWings');
+    expect(migrated.upgrades).toMatchObject({ commandNetwork: 3 });
+    expect(migrated.upgrades.formationMastery).toBeUndefined();
   });
 });

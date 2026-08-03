@@ -12,10 +12,12 @@ function createElement() {
   };
 }
 
-function pointer(pointerId, x, y) {
+function pointer(pointerId, x, y, { pointerType = 'touch', type = 'pointermove', button = 0 } = {}) {
   return {
     pointerId,
-    pointerType: 'touch',
+    pointerType,
+    type,
+    button,
     clientX: x,
     clientY: y,
     preventDefault: vi.fn(),
@@ -47,6 +49,52 @@ describe('TargetingInput', () => {
     expect(onEnd).toHaveBeenCalledTimes(1);
     expect(element.setPointerCapture).toHaveBeenCalledWith(7);
     expect(element.releasePointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it('routes the lower-quarter boundary to formation dragging on touch and mouse', () => {
+    for (const pointerType of ['touch', 'mouse']) {
+      const element = createElement();
+      const onFormationStart = vi.fn(() => ({ dragging: true }));
+      const onTargetStart = vi.fn(() => ({ firing: true }));
+      const onFormationEnd = vi.fn();
+      new TargetingInput({
+        element,
+        toWorld: (x, y) => ({ x, y }),
+        isFormationPoint: ({ y }) => y <= -35.5,
+        onFormationStart,
+        onFormationMove: vi.fn(),
+        onFormationEnd,
+        onTargetStart,
+        onTargetMove: vi.fn(),
+        onTargetEnd: vi.fn(),
+      });
+
+      element.listeners.get('pointerdown')(pointer(11, 4, -35.5, { pointerType, type: 'pointerdown' }));
+      element.listeners.get('pointercancel')(pointer(11, 4, -35.5, { pointerType, type: 'pointercancel' }));
+
+      expect(onFormationStart).toHaveBeenCalledTimes(1);
+      expect(onTargetStart).not.toHaveBeenCalled();
+      expect(onFormationEnd).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ cancelled: true }));
+    }
+  });
+
+  it('routes a start just above the boundary to flagship targeting', () => {
+    const element = createElement();
+    const onTargetStart = vi.fn(() => ({ firing: true }));
+    new TargetingInput({
+      element,
+      toWorld: (x, y) => ({ x, y }),
+      isFormationPoint: ({ y }) => y <= -35.5,
+      onFormationStart: vi.fn(() => ({ dragging: true })),
+      onFormationMove: vi.fn(),
+      onFormationEnd: vi.fn(),
+      onTargetStart,
+      onTargetMove: vi.fn(),
+      onTargetEnd: vi.fn(),
+    });
+
+    element.listeners.get('pointerdown')(pointer(12, 0, -35.49, { type: 'pointerdown' }));
+    expect(onTargetStart).toHaveBeenCalledWith({ x: 0, y: -35.49 });
   });
 
   it('ends active firing when targeting becomes disabled', () => {

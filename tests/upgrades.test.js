@@ -38,4 +38,14 @@ describe('UpgradeSystem', () => {
     expect(system.automatedGunnery).toBe(true);
     expect(system.getCost('automatedGunnery')).toBeNull();
   });
+
+  it('preserves Formation Doctrine levels as Command Network unlocks', () => {
+    const system = new UpgradeSystem({ formationMastery: 3 });
+    const network = system.snapshot().find(({ id }) => id === 'commandNetwork');
+
+    expect(system.commandNetworkLevel).toBe(3);
+    expect(system.unlockedFormationLoadouts).toBe(3);
+    expect(network.name).toBe('Command network');
+    expect(network.currentEffect).toContain('3 loadouts');
+  });
 });

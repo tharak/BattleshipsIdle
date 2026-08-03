@@ -6,9 +6,13 @@ import {
 
 export class UpgradeSystem {
   constructor(levels = {}) {
+    const migratedLevels = {
+      ...levels,
+      commandNetwork: levels.commandNetwork ?? levels.formationMastery,
+    };
     this.levels = Object.fromEntries(
       UPGRADE_ORDER.map((id) => {
-        const value = Number.isFinite(levels[id]) ? Math.floor(levels[id]) : 0;
+        const value = Number.isFinite(migratedLevels[id]) ? Math.floor(migratedLevels[id]) : 0;
         return [id, Math.max(0, Math.min(UPGRADE_DEFINITIONS[id].maxLevel, value))];
       }),
     );
@@ -58,8 +62,12 @@ export class UpgradeSystem {
     return 1 + this.getLevel('resourceGeneration') * 0.12;
   }
 
-  get formationMasteryMultiplier() {
-    return 1 + this.getLevel('formationMastery') * 0.05;
+  get commandNetworkLevel() {
+    return this.getLevel('commandNetwork');
+  }
+
+  get unlockedFormationLoadouts() {
+    return 1 + (this.commandNetworkLevel >= 1 ? 1 : 0) + (this.commandNetworkLevel >= 3 ? 1 : 0);
   }
 
   get fleetSize() {

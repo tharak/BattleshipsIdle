@@ -34,7 +34,8 @@ function schedulePersist() {
 
 simulation = new GameSimulation({
   progressionState: persistentState,
-  selectedFormation: persistentState.selectedFormation,
+  formationLoadouts: persistentState.formationLoadouts,
+  activeLoadoutIndex: persistentState.activeLoadoutIndex,
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);
@@ -62,9 +63,16 @@ const hud = new HudController({
     simulation.restartRun();
     consumeAndDispatchEvents();
   },
-  onFormation: (formationId) => {
-    const result = simulation.changeFormation(formationId);
+  onLoadout: (loadoutIndex) => {
+    const result = simulation.activateFormationLoadout(loadoutIndex);
     consumeAndDispatchEvents();
+    if (result.changed) persistNow();
+    return result;
+  },
+  onTemplate: (templateId) => {
+    const result = simulation.applyFormationTemplate(templateId);
+    consumeAndDispatchEvents();
+    if (result.changed) persistNow();
     return result;
   },
   onShopOpen: () => {
@@ -94,16 +102,31 @@ const hud = new HudController({
 const targetingInput = new TargetingInput({
   element: gameRenderer.renderer.domElement,
   toWorld: (clientX, clientY) => gameRenderer.screenToWorld(clientX, clientY),
-  onStart: ({ x, y }) => {
+  isFormationPoint: ({ y }) => simulation.isFormationEditingPoint(y),
+  onFormationStart: ({ x, y }) => {
+    const result = simulation.beginShipDrag(x, y);
+    consumeAndDispatchEvents();
+    return result;
+  },
+  onFormationMove: ({ x, y }) => {
+    simulation.previewShipDrag(x, y);
+    consumeAndDispatchEvents();
+  },
+  onFormationEnd: (_point, { cancelled }) => {
+    const result = simulation.commitShipDrag({ cancelled });
+    consumeAndDispatchEvents();
+    if (result.changed) persistNow();
+  },
+  onTargetStart: ({ x, y }) => {
     const result = simulation.beginFlagshipFire(x, y);
     consumeAndDispatchEvents();
     return result;
   },
-  onMove: ({ x, y }) => {
+  onTargetMove: ({ x, y }) => {
     simulation.aimFlagshipFire(x, y);
     consumeAndDispatchEvents();
   },
-  onEnd: () => {
+  onTargetEnd: () => {
     simulation.endFlagshipFire();
     consumeAndDispatchEvents();
   },
@@ -132,7 +155,7 @@ function frame(now) {
       : null;
     hud.update(snapshot, flagshipVitalsPosition);
     hud.tick(rawDelta);
-    targetingInput.setEnabled(snapshot.status === 'running' && snapshot.waveIntermission <= 0);
+    targetingInput.setEnabled(snapshot.status === 'running');
   }
 
   gameRenderer.render();

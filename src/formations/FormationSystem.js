@@ -1,87 +1,239 @@
 import {
+  ARENA,
   FORMATIONS,
   FORMATION_CHANGE,
+  FORMATION_EDITOR,
   FORMATION_ORDER,
+  GEOMETRY_BONUSES,
 } from '../config/balance.js';
 
-const SEVEN_SHIP_LAYOUTS = Object.freeze({
-  line: [
-    [-33, -37], [-22, -40], [-11, -42], [0, -48], [11, -42], [22, -40], [33, -37],
-  ],
-  wedge: [
-    [-31, -31], [-21, -36], [-11, -41], [0, -49], [11, -41], [21, -36], [31, -31],
-  ],
-  defensiveArc: [
-    [-32, -33], [-27, -41], [-15, -47], [0, -50], [15, -47], [27, -41], [32, -33],
-  ],
-  splitWings: [
-    [-39, -35], [-31, -42], [-23, -35], [0, -49], [23, -35], [31, -42], [39, -35],
-  ],
-  denseColumn: [
-    [-4, -25], [4, -31], [-4, -37], [0, -52], [4, -43], [-4, -47], [4, -51],
-  ],
+const STARTER_LAYOUTS = Object.freeze({
+  line: [[-35, -40], [-25, -40], [-15, -40], [0, -55], [15, -40], [25, -40], [35, -40]],
+  wedge: [[-30, -40], [-20, -45], [-10, -50], [0, -55], [10, -50], [20, -45], [30, -40]],
+  defensiveArc: [[-30, -40], [-25, -50], [-15, -55], [0, -55], [15, -55], [25, -50], [30, -40]],
+  splitWings: [[-30, -40], [-25, -50], [-20, -40], [0, -55], [20, -40], [25, -50], [30, -40]],
+  denseColumn: [[-5, -40], [5, -40], [-5, -50], [0, -55], [5, -50], [-10, -55], [10, -55]],
 });
 
-function smoothstep(value) {
-  return value * value * (3 - 2 * value);
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value, places = 4) {
+  const multiplier = 10 ** places;
+  return Math.round(value * multiplier) / multiplier;
+}
+
+function distance(left, right) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function slotMap(slots) {
+  return new Map(slots.map((slot) => [slot.slot, slot]));
+}
+
+export function getStarterTemplatePositions(templateId = 'line', count = 7) {
+  const layout = STARTER_LAYOUTS[templateId] ?? STARTER_LAYOUTS.line;
+  const positions = layout.map(([x, y], slot) => ({ slot, x, y }));
+  const candidates = [];
+  for (let y = -55; y <= -40; y += FORMATION_EDITOR.gridSize) {
+    for (let x = -30; x <= 30; x += FORMATION_EDITOR.gridSize) candidates.push({ x, y });
+  }
+  while (positions.length < count) {
+    const point = candidates.find((candidate) => positions.every((position) => distance(position, candidate) >= FORMATION_EDITOR.minimumSeparation));
+    if (!point) break;
+    positions.push({ slot: positions.length, ...point });
+  }
+  return positions.slice(0, count);
+}
+
+export function createStarterLoadouts(primaryTemplateId = 'line') {
+  const primary = FORMATIONS[primaryTemplateId] ? primaryTemplateId : 'line';
+  const templateIds = [primary, ...FORMATION_ORDER.filter((id) => id !== primary)]
+    .slice(0, FORMATION_EDITOR.loadoutCount);
+  return templateIds.map((templateId, index) => ({
+    id: `loadout-${index + 1}`,
+    name: `Loadout ${index + 1}`,
+    templateId,
+    slots: getStarterTemplatePositions(templateId),
+  }));
+}
+
+export function normalizeFormationLoadouts(loadouts, primaryTemplateId = 'line') {
+  const fallbacks = createStarterLoadouts(primaryTemplateId);
+  return fallbacks.map((fallback, index) => {
+    const source = Array.isArray(loadouts) ? loadouts[index] : null;
+    if (!source || !Array.isArray(source.slots)) return fallback;
+    const seen = new Set();
+    const slots = source.slots
+      .map((position, fallbackSlot) => ({
+        slot: Number.isFinite(position?.slot) ? Math.max(0, Math.floor(position.slot)) : fallbackSlot,
+        x: Number(position?.x),
+        y: Number(position?.y),
+      }))
+      .filter((position) => Number.isFinite(position.x) && Number.isFinite(position.y))
+      .filter((position) => !seen.has(position.slot) && seen.add(position.slot));
+    const fallbackBySlot = slotMap(fallback.slots);
+    for (let slot = 0; slot < 7; slot += 1) {
+      if (!slots.some((position) => position.slot === slot)) slots.push({ ...fallbackBySlot.get(slot) });
+    }
+    slots.sort((left, right) => left.slot - right.slot);
+    return {
+      id: `loadout-${index + 1}`,
+      name: typeof source.name === 'string' && source.name.trim() ? source.name.trim().slice(0, 24) : fallback.name,
+      templateId: FORMATIONS[source.templateId] ? source.templateId : null,
+      slots,
+    };
+  });
 }
 
 export class FormationSystem {
-  constructor(initialId = 'line') {
-    this.currentId = FORMATIONS[initialId] ? initialId : 'line';
-    this.transitionRemaining = 0;
+  constructor(options = 'line') {
+    const normalizedOptions = typeof options === 'string'
+      ? { initialTemplateId: options }
+      : (options ?? {});
+    const initialTemplateId = FORMATIONS[normalizedOptions.initialTemplateId]
+      ? normalizedOptions.initialTemplateId
+      : 'line';
+    this.loadouts = normalizeFormationLoadouts(normalizedOptions.loadouts, initialTemplateId);
+    this.activeLoadoutIndex = clamp(
+      Math.floor(Number(normalizedOptions.activeLoadoutIndex) || 0),
+      0,
+      FORMATION_EDITOR.loadoutCount - 1,
+    );
+    this.commandNetworkLevel = clamp(Math.floor(Number(normalizedOptions.commandNetworkLevel) || 0), 0, 12);
+    if (this.activeLoadoutIndex >= this.unlockedLoadoutCount) this.activeLoadoutIndex = 0;
     this.cooldownRemaining = 0;
-    this.horizontalScale = 1;
-    this.verticalOffset = 0;
-    this.transitionDuration = FORMATION_CHANGE.duration;
+    this.movingSlots = new Set();
+    this.dragState = null;
+    this.arena = { ...ARENA };
+  }
+
+  get unlockedLoadoutCount() {
+    return 1 + (this.commandNetworkLevel >= 1 ? 1 : 0) + (this.commandNetworkLevel >= 3 ? 1 : 0);
+  }
+
+  get activeLoadout() {
+    return this.loadouts[this.activeLoadoutIndex];
+  }
+
+  get currentId() {
+    return this.activeLoadout.templateId ?? `custom-${this.activeLoadoutIndex + 1}`;
   }
 
   get current() {
-    return FORMATIONS[this.currentId];
+    const template = FORMATIONS[this.activeLoadout.templateId];
+    return template ?? {
+      id: this.currentId,
+      name: this.activeLoadout.name,
+      shortName: `L${this.activeLoadoutIndex + 1}`,
+      description: 'Custom geometry',
+      mechanic: 'Live geometry bonuses',
+    };
   }
 
   get isTransitioning() {
-    return this.transitionRemaining > 0;
+    return this.movingSlots.size > 0;
   }
 
-  getPositions(count, formationId = this.currentId) {
-    const template = SEVEN_SHIP_LAYOUTS[formationId] ?? SEVEN_SHIP_LAYOUTS.line;
-    if (count === template.length) {
-      return template.map(([x, y]) => ({ x: x * this.horizontalScale, y: y + this.verticalOffset }));
-    }
-
-    // Dynamic fallbacks support later fleet-size upgrades without changing the formation contract.
-    const commandIndex = Math.floor(count / 2);
-    return Array.from({ length: count }, (_, index) => {
-      if (index === commandIndex) return { x: 0, y: -50 + this.verticalOffset };
-      const sideIndex = index < commandIndex ? index - commandIndex : index - commandIndex;
-      const side = Math.sign(sideIndex);
-      const rank = Math.abs(sideIndex);
-      if (formationId === 'denseColumn') {
-        return { x: side * (3 + (rank % 2) * 2) * this.horizontalScale, y: -50 + rank * 5 + this.verticalOffset };
-      }
-      if (formationId === 'splitWings') {
-        return { x: side * (20 + rank * 5) * this.horizontalScale, y: -42 + (rank % 2) * 7 + this.verticalOffset };
-      }
-      if (formationId === 'defensiveArc') {
-        const angle = (rank / Math.max(1, commandIndex)) * Math.PI * 0.48;
-        return { x: side * Math.sin(angle) * 35 * this.horizontalScale, y: -50 + (1 - Math.cos(angle)) * 20 + this.verticalOffset };
-      }
-      if (formationId === 'wedge') {
-        return { x: side * rank * 9 * this.horizontalScale, y: -48 + rank * 5 + this.verticalOffset };
-      }
-      return { x: side * rank * 9 * this.horizontalScale, y: -43 + rank * 1.4 + this.verticalOffset };
-    });
+  setCommandNetworkLevel(level) {
+    this.commandNetworkLevel = clamp(Math.floor(Number(level) || 0), 0, 12);
+    if (this.activeLoadoutIndex >= this.unlockedLoadoutCount) this.activeLoadoutIndex = 0;
   }
 
-  getPositionsForFleet(friendlies, formationId = this.currentId) {
-    const positions = this.getPositions(friendlies.length, formationId);
-    const commandIndex = friendlies.findIndex((ship) => ship.role === 'command');
-    const commandSlot = Math.floor(friendlies.length / 2);
-    if (commandIndex >= 0 && commandIndex !== commandSlot) {
-      [positions[commandIndex], positions[commandSlot]] = [positions[commandSlot], positions[commandIndex]];
+  setArena(arena) {
+    this.arena = { ...this.arena, ...arena };
+    this.fitLoadoutsToArena();
+  }
+
+  fitLoadoutsToArena() {
+    const bounds = this.getPlacementBounds();
+    for (const loadout of this.loadouts) {
+      const placed = [];
+      for (const position of loadout.slots) {
+        const desired = this.snapPoint(
+          clamp(position.x, bounds.minX, bounds.maxX),
+          clamp(position.y, bounds.minY, bounds.maxY),
+        );
+        const candidates = [];
+        for (let y = bounds.minY; y <= bounds.maxY; y += FORMATION_EDITOR.gridSize) {
+          for (let x = bounds.minX; x <= bounds.maxX; x += FORMATION_EDITOR.gridSize) {
+            candidates.push({ x, y, distance: Math.hypot(x - desired.x, y - desired.y) });
+          }
+        }
+        const candidate = candidates
+          .sort((left, right) => left.distance - right.distance)
+          .find((point) => placed.every((other) => distance(other, point) >= FORMATION_EDITOR.minimumSeparation))
+          ?? desired;
+        position.x = candidate.x;
+        position.y = candidate.y;
+        placed.push(position);
+      }
     }
-    return positions;
+  }
+
+  getPlacementBounds() {
+    const halfWidth = Math.min(
+      this.arena.maxX - FORMATION_EDITOR.horizontalPadding,
+      FORMATION_EDITOR.basePlacementHalfWidth
+        + this.commandNetworkLevel * FORMATION_EDITOR.placementHalfWidthPerLevel,
+    );
+    const grid = FORMATION_EDITOR.gridSize;
+    return {
+      minX: Math.ceil(-halfWidth / grid) * grid,
+      maxX: Math.floor(halfWidth / grid) * grid,
+      minY: Math.ceil((this.arena.minY + FORMATION_EDITOR.fleetZoneBottomPadding) / grid) * grid,
+      maxY: Math.floor((this.arena.minY + this.arena.height * FORMATION_EDITOR.fleetZoneTopRatio) / grid) * grid,
+    };
+  }
+
+  isFleetZonePoint(y) {
+    return y <= this.arena.minY + this.arena.height * FORMATION_EDITOR.fleetZoneTopRatio;
+  }
+
+  snapPoint(x, y) {
+    const grid = FORMATION_EDITOR.gridSize;
+    return { x: Math.round(x / grid) * grid, y: Math.round(y / grid) * grid };
+  }
+
+  ensureFleetSlots(friendlies) {
+    const highestSlot = Math.max(6, ...friendlies.map((ship) => ship.slot));
+    for (let index = 0; index < this.loadouts.length; index += 1) {
+      const loadout = this.loadouts[index];
+      const existing = slotMap(loadout.slots);
+      const templatePositions = getStarterTemplatePositions(loadout.templateId ?? 'line', highestSlot + 1);
+      for (let slot = 0; slot <= highestSlot; slot += 1) {
+        if (existing.has(slot)) continue;
+        let candidate = templatePositions.find((position) => position.slot === slot);
+        if (!candidate) candidate = this.findOpenGridPosition(loadout.slots);
+        loadout.slots.push({ slot, x: candidate.x, y: candidate.y });
+      }
+      loadout.slots.sort((left, right) => left.slot - right.slot);
+    }
+    this.fitLoadoutsToArena();
+  }
+
+  findOpenGridPosition(existingSlots) {
+    const bounds = this.getPlacementBounds();
+    for (let y = bounds.minY; y <= bounds.maxY; y += FORMATION_EDITOR.gridSize) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += FORMATION_EDITOR.gridSize) {
+        const candidate = { x, y };
+        if (existingSlots.every((position) => distance(position, candidate) >= FORMATION_EDITOR.minimumSeparation)) {
+          return candidate;
+        }
+      }
+    }
+    return { x: 0, y: bounds.minY };
+  }
+
+  getPositions(count, templateId = this.activeLoadout.templateId ?? 'line') {
+    return getStarterTemplatePositions(templateId, count).map(({ x, y }) => ({ x, y }));
+  }
+
+  getPositionsForFleet(friendlies, loadout = this.activeLoadout) {
+    this.ensureFleetSlots(friendlies);
+    const positions = slotMap(loadout.slots);
+    return friendlies.map((ship) => ({ ...positions.get(ship.slot) }));
   }
 
   applyInitialPositions(friendlies) {
@@ -91,96 +243,249 @@ export class FormationSystem {
       ship.y = positions[index].y;
       ship.targetX = ship.x;
       ship.targetY = ship.y;
+      ship.moving = false;
     });
+    this.movingSlots.clear();
   }
 
-  changeTo(formationId, friendlies, { ignoreCooldown = false } = {}) {
-    if (!FORMATIONS[formationId] || formationId === this.currentId) {
-      return { changed: false, reason: 'same-or-unknown' };
-    }
-    if (!ignoreCooldown && this.cooldownRemaining > 0) {
-      return { changed: false, reason: 'cooldown' };
-    }
-
-    const positions = this.getPositionsForFleet(friendlies, formationId);
-    const paths = friendlies.map((ship, index) => {
-      const target = positions[index];
-      ship.formationFromX = ship.x;
-      ship.formationFromY = ship.y;
-      ship.targetX = target.x;
-      ship.targetY = target.y;
-      return { from: { x: ship.x, y: ship.y }, to: { ...target } };
-    });
-
-    this.currentId = formationId;
-    this.transitionDuration = FORMATION_CHANGE.duration;
-    this.transitionRemaining = FORMATION_CHANGE.duration;
-    this.cooldownRemaining = FORMATION_CHANGE.cooldown;
-    return { changed: true, formation: this.current, paths };
-  }
-
-  reflow(friendlies, { duration = FORMATION_CHANGE.duration } = {}) {
+  moveFleetToActiveLoadout(friendlies, { startCooldown = false } = {}) {
     const positions = this.getPositionsForFleet(friendlies);
-    const paths = friendlies.map((ship, index) => {
-      const target = positions[index];
-      ship.formationFromX = ship.x;
-      ship.formationFromY = ship.y;
-      ship.targetX = target.x;
-      ship.targetY = target.y;
-      return { from: { x: ship.x, y: ship.y }, to: { ...target } };
-    });
-    this.transitionDuration = duration;
-    this.transitionRemaining = duration;
+    const paths = friendlies.map((ship, index) => this.moveShip(ship, positions[index]));
+    if (startCooldown) this.cooldownRemaining = FORMATION_CHANGE.cooldown;
     return paths;
   }
 
-  setViewportLayout(scale, verticalOffset, friendlies) {
-    const nextScale = Math.max(0.72, Math.min(1.35, scale));
-    const nextOffset = Number.isFinite(verticalOffset) ? verticalOffset : 0;
-    if (Math.abs(nextScale - this.horizontalScale) < 0.001
-      && Math.abs(nextOffset - this.verticalOffset) < 0.001) return [];
-    this.horizontalScale = nextScale;
-    this.verticalOffset = nextOffset;
-    return this.reflow(friendlies, { duration: 0.35 });
+  moveShip(ship, target) {
+    const from = { x: ship.x, y: ship.y };
+    ship.targetX = target.x;
+    ship.targetY = target.y;
+    ship.moving = distance(ship, target) > 0.001;
+    if (ship.moving) this.movingSlots.add(ship.slot);
+    else this.movingSlots.delete(ship.slot);
+    return { slot: ship.slot, shipId: ship.id, from, to: { ...target } };
+  }
+
+  activateLoadout(index, friendlies, { ignoreCooldown = false } = {}) {
+    const loadoutIndex = Math.floor(Number(index));
+    if (loadoutIndex < 0 || loadoutIndex >= this.unlockedLoadoutCount) {
+      return { changed: false, reason: 'locked' };
+    }
+    if (loadoutIndex === this.activeLoadoutIndex) return { changed: false, reason: 'same' };
+    if (!ignoreCooldown && this.cooldownRemaining > 0) return { changed: false, reason: 'cooldown' };
+    this.activeLoadoutIndex = loadoutIndex;
+    const paths = this.moveFleetToActiveLoadout(friendlies, { startCooldown: !ignoreCooldown });
+    return { changed: true, loadoutIndex, loadout: this.activeLoadout, paths };
+  }
+
+  applyTemplate(templateId, friendlies, { ignoreCooldown = false } = {}) {
+    if (!FORMATIONS[templateId]) return { changed: false, reason: 'unknown-template' };
+    if (!ignoreCooldown && this.cooldownRemaining > 0) return { changed: false, reason: 'cooldown' };
+    const count = Math.max(7, ...friendlies.map((ship) => ship.slot + 1));
+    this.activeLoadout.templateId = templateId;
+    this.activeLoadout.slots = getStarterTemplatePositions(templateId, count);
+    this.ensureFleetSlots(friendlies);
+    const paths = this.moveFleetToActiveLoadout(friendlies, { startCooldown: !ignoreCooldown });
+    return { changed: true, templateId, formation: FORMATIONS[templateId], paths };
+  }
+
+  changeTo(templateId, friendlies, options = {}) {
+    return this.applyTemplate(templateId, friendlies, options);
+  }
+
+  reflow(friendlies) {
+    return this.moveFleetToActiveLoadout(friendlies);
+  }
+
+  previewPlacement(slot, x, y, friendlies) {
+    const candidate = this.snapPoint(x, y);
+    const bounds = this.getPlacementBounds();
+    const loadoutSlots = this.activeLoadout.slots;
+    const insideBounds = candidate.x >= bounds.minX && candidate.x <= bounds.maxX
+      && candidate.y >= bounds.minY && candidate.y <= bounds.maxY;
+    const separated = loadoutSlots.every((position) => position.slot === slot
+      || distance(position, candidate) >= FORMATION_EDITOR.minimumSeparation);
+    const valid = insideBounds && separated;
+    const positions = friendlies
+      .filter((ship) => ship.alive !== false)
+      .map((ship) => ship.slot === slot
+        ? { slot: ship.slot, role: ship.role, ...candidate }
+        : { slot: ship.slot, role: ship.role, x: ship.x, y: ship.y });
+    const currentModifiers = this.getModifiers(friendlies);
+    const previewModifiers = this.getModifiersFromPositions(positions, friendlies);
+    this.dragState = {
+      slot,
+      original: { ...loadoutSlots.find((position) => position.slot === slot) },
+      candidate,
+      valid,
+      reason: !insideBounds ? 'outside-fleet-zone' : !separated ? 'overlap' : null,
+      modifiers: previewModifiers,
+      changes: Object.fromEntries(Object.keys(previewModifiers).map((key) => [key, round(previewModifiers[key] - currentModifiers[key])])),
+    };
+    return { ...this.dragState };
+  }
+
+  commitPlacement(friendlies) {
+    const preview = this.dragState;
+    this.dragState = null;
+    if (!preview?.valid) return { changed: false, reason: preview?.reason ?? 'no-drag', preview };
+    const position = this.activeLoadout.slots.find((slot) => slot.slot === preview.slot);
+    if (!position) return { changed: false, reason: 'unknown-slot', preview };
+    position.x = preview.candidate.x;
+    position.y = preview.candidate.y;
+    this.activeLoadout.templateId = null;
+    const ship = friendlies.find((candidate) => candidate.slot === preview.slot);
+    const path = ship ? this.moveShip(ship, preview.candidate) : null;
+    return { changed: true, slot: preview.slot, position: { ...preview.candidate }, path, preview };
+  }
+
+  cancelPlacement() {
+    const preview = this.dragState;
+    this.dragState = null;
+    return { changed: false, reason: 'cancelled', preview };
   }
 
   update(friendlies, deltaSeconds) {
     this.cooldownRemaining = Math.max(0, this.cooldownRemaining - deltaSeconds);
-    if (!this.isTransitioning) return;
-
-    this.transitionRemaining = Math.max(0, this.transitionRemaining - deltaSeconds);
-    const rawProgress = 1 - this.transitionRemaining / this.transitionDuration;
-    const progress = smoothstep(Math.max(0, Math.min(1, rawProgress)));
+    const speed = FORMATION_CHANGE.baseManeuverSpeed
+      * (1 + this.commandNetworkLevel * FORMATION_CHANGE.maneuverSpeedPerLevel);
     for (const ship of friendlies) {
-      ship.x = ship.formationFromX + (ship.targetX - ship.formationFromX) * progress;
-      ship.y = ship.formationFromY + (ship.targetY - ship.formationFromY) * progress;
+      if (!Number.isFinite(ship.targetX) || !Number.isFinite(ship.targetY)) {
+        ship.targetX = ship.x;
+        ship.targetY = ship.y;
+      }
+      const remaining = Math.hypot(ship.targetX - ship.x, ship.targetY - ship.y);
+      if (remaining <= 0.001) {
+        ship.x = ship.targetX;
+        ship.y = ship.targetY;
+        ship.moving = false;
+        this.movingSlots.delete(ship.slot);
+        continue;
+      }
+      const step = Math.min(remaining, speed * deltaSeconds);
+      ship.x += ((ship.targetX - ship.x) / remaining) * step;
+      ship.y += ((ship.targetY - ship.y) / remaining) * step;
+      ship.moving = step < remaining;
+      if (ship.moving) this.movingSlots.add(ship.slot);
+      else this.movingSlots.delete(ship.slot);
     }
   }
 
-  getAutoDamageMultiplier(target) {
-    let multiplier = this.current.autoDamage;
-    if (this.currentId === 'splitWings') {
-      multiplier *= Math.abs(target.x) >= 19 ? this.current.sideDamage : this.current.centerDamage;
+  getGeometryMetrics(positions) {
+    if (!positions.length) return { horizontalSpread: 0, cohesion: 0, screening: 0 };
+    const minX = Math.min(...positions.map(({ x }) => x));
+    const maxX = Math.max(...positions.map(({ x }) => x));
+    const bounds = this.getPlacementBounds();
+    const horizontalSpread = clamp((maxX - minX) / Math.max(1, bounds.maxX - bounds.minX), 0, 1);
+    const center = positions.reduce((total, position) => ({
+      x: total.x + position.x / positions.length,
+      y: total.y + position.y / positions.length,
+    }), { x: 0, y: 0 });
+    const averageRadius = positions.reduce((sum, position) => sum + distance(position, center), 0) / positions.length;
+    const cohesion = 1 - clamp(
+      (averageRadius - GEOMETRY_BONUSES.cohesionIdealRadius) / GEOMETRY_BONUSES.cohesionFalloffRadius,
+      0,
+      1,
+    );
+    const command = positions.find((position) => position.role === 'command')
+      ?? positions.find((position) => position.slot === 3);
+    let screening = 0;
+    if (command) {
+      const weight = positions.reduce((sum, position) => {
+        if (position.slot === command.slot || position.y <= command.y) return sum;
+        const separation = distance(position, command);
+        return sum + clamp(1 - separation / GEOMETRY_BONUSES.screeningRadius, 0, 1);
+      }, 0);
+      screening = clamp(weight / GEOMETRY_BONUSES.screeningFullWeight, 0, 1);
     }
-    if (this.isTransitioning) multiplier *= FORMATION_CHANGE.movingAutoDamage;
-    return multiplier;
+    return {
+      horizontalSpread: round(horizontalSpread),
+      cohesion: round(cohesion),
+      screening: round(screening),
+    };
   }
 
-  getIncomingDamageMultiplier() {
-    return this.current.incomingDamage
-      * (this.isTransitioning ? FORMATION_CHANGE.movingIncomingDamage : 1);
+  getModifiersFromPositions(positions, friendlies = []) {
+    const validPositions = positions.filter(({ x, y }) => Number.isFinite(x) && Number.isFinite(y));
+    const roles = new Map(friendlies.map((ship) => [ship.slot, ship.role]));
+    const withRoles = validPositions.map((position) => ({ ...position, role: roles.get(position.slot) }));
+    const metrics = this.getGeometryMetrics(withRoles);
+    const capRatio = GEOMETRY_BONUSES.baseCapRatio
+      + (1 - GEOMETRY_BONUSES.baseCapRatio) * this.commandNetworkLevel / 12;
+    return {
+      rangeBonus: round(metrics.horizontalSpread * GEOMETRY_BONUSES.rangeMaximum * capRatio),
+      sideDamageBonus: round(metrics.horizontalSpread * GEOMETRY_BONUSES.sideDamageMaximum * capRatio),
+      fireRateBonus: round(metrics.cohesion * GEOMETRY_BONUSES.fireRateMaximum * capRatio),
+      flagshipDamageBonus: round(metrics.cohesion * GEOMETRY_BONUSES.flagshipDamageMaximum * capRatio),
+      flagshipDamageReduction: round(metrics.screening * GEOMETRY_BONUSES.screeningMaximum * capRatio),
+    };
   }
 
-  snapshot() {
+  getModifiers(friendlies = this.activeLoadout.slots) {
+    return this.getModifiersFromPositions(
+      friendlies.filter((ship) => ship.alive !== false).map(({ slot, role, x, y }) => ({ slot, role, x, y })),
+      friendlies,
+    );
+  }
+
+  getAutoDamageMultiplier(target, friendlies = this.activeLoadout.slots) {
+    const modifiers = this.getModifiers(friendlies);
+    const sideTarget = Math.abs(target.x) >= this.arena.maxX * GEOMETRY_BONUSES.sideTargetRatio;
+    return (sideTarget ? 1 + modifiers.sideDamageBonus : 1)
+      * (this.isTransitioning ? FORMATION_CHANGE.movingAutoDamage : 1);
+  }
+
+  getIncomingDamageMultiplier(entity, friendlies) {
+    const screening = entity?.role === 'command'
+      ? 1 - this.getModifiers(friendlies).flagshipDamageReduction
+      : 1;
+    return screening * (this.isTransitioning ? FORMATION_CHANGE.movingIncomingDamage : 1);
+  }
+
+  getRangeMultiplier(friendlies) {
+    return 1 + this.getModifiers(friendlies).rangeBonus;
+  }
+
+  getFireRateMultiplier(friendlies) {
+    return 1 + this.getModifiers(friendlies).fireRateBonus;
+  }
+
+  getFlagshipDamageMultiplier(friendlies) {
+    return 1 + this.getModifiers(friendlies).flagshipDamageBonus;
+  }
+
+  exportLoadouts() {
+    return this.loadouts.map((loadout) => ({
+      ...loadout,
+      slots: loadout.slots.map((position) => ({ ...position })),
+    }));
+  }
+
+  snapshot(friendlies = []) {
+    const modifiers = this.getModifiers(friendlies);
+    const positions = friendlies.filter((ship) => ship.alive !== false)
+      .map(({ slot, role, x, y }) => ({ slot, role, x, y }));
     return {
       currentId: this.currentId,
-      current: this.current,
+      current: { ...this.current, ...modifiers },
       order: FORMATION_ORDER,
-      transitionProgress: this.isTransitioning
-        ? 1 - this.transitionRemaining / FORMATION_CHANGE.duration
-        : 1,
+      loadouts: this.exportLoadouts(),
+      activeLoadoutIndex: this.activeLoadoutIndex,
+      unlockedLoadoutCount: this.unlockedLoadoutCount,
+      templates: FORMATION_ORDER.map((id) => ({ ...FORMATIONS[id] })),
+      geometry: this.getGeometryMetrics(positions),
+      modifiers,
+      preview: this.dragState ? { ...this.dragState } : null,
+      placement: { bounds: this.getPlacementBounds(), gridSize: FORMATION_EDITOR.gridSize, minimumSeparation: FORMATION_EDITOR.minimumSeparation },
+      movingShips: friendlies.filter((ship) => ship.moving).map((ship) => ({
+        id: ship.id,
+        slot: ship.slot,
+        target: { x: ship.targetX, y: ship.targetY },
+      })),
+      transitionProgress: this.isTransitioning ? 0 : 1,
       cooldownRemaining: this.cooldownRemaining,
       isTransitioning: this.isTransitioning,
+      maneuverSpeed: FORMATION_CHANGE.baseManeuverSpeed
+        * (1 + this.commandNetworkLevel * FORMATION_CHANGE.maneuverSpeedPerLevel),
     };
   }
 }

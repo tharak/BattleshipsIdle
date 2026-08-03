@@ -13,7 +13,7 @@
   </head>
   <body>
     <main id="game-shell" aria-label="Voidline Command game">
-      <div id="battlefield" aria-label="Fleet battlefield. Hold and drag to aim the flagship gun."></div>
+      <div id="battlefield" aria-label="Fleet battlefield. Drag ships in the lower fleet zone to maneuver. Drag in the upper battlefield to aim the flagship gun."></div>
 
       <div id="flagship-vitals" class="flagship-vitals" role="status" aria-label="Flagship hull 100 percent, shield 0 percent" hidden>
         <div class="flagship-vitals__row flagship-vitals__row--hull">
@@ -35,52 +35,34 @@
       </section>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
-        <div id="formation-bar" class="formation-bar" role="group" aria-label="Fleet formations and upgrades">
-          <button class="formation-option" type="button" data-formation="line" data-tooltip="Line · +12% range" aria-label="Line formation. Broad coverage and 12 percent more range" aria-pressed="true">
-            <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
-              <path class="formation-icon__guide" d="M5 17H47"></path>
-              <circle cx="5" cy="17" r="2.4"></circle><circle cx="12" cy="17" r="2.4"></circle><circle cx="19" cy="17" r="2.4"></circle>
-              <circle class="formation-icon__command" cx="26" cy="17" r="3"></circle>
-              <circle cx="33" cy="17" r="2.4"></circle><circle cx="40" cy="17" r="2.4"></circle><circle cx="47" cy="17" r="2.4"></circle>
-            </svg>
-            <small>+12% RANGE</small>
-          </button>
-          <button class="formation-option" type="button" data-formation="wedge" data-tooltip="Wedge · +18% auto damage" aria-label="Wedge formation. Forward pressure and 18 percent more automatic damage" aria-pressed="false">
-            <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
-              <path class="formation-icon__guide" d="M7 6l19 25M45 6L26 31"></path>
-              <circle cx="7" cy="6" r="2.4"></circle><circle cx="45" cy="6" r="2.4"></circle><circle cx="13" cy="14" r="2.4"></circle>
-              <circle cx="39" cy="14" r="2.4"></circle><circle cx="20" cy="23" r="2.4"></circle><circle cx="32" cy="23" r="2.4"></circle>
-              <circle class="formation-icon__command" cx="26" cy="31" r="3"></circle>
-            </svg>
-            <small>+18% AUTO</small>
-          </button>
-          <button class="formation-option" type="button" data-formation="defensiveArc" data-tooltip="Defensive arc · −32% incoming" aria-label="Defensive arc formation. Command shelter and 32 percent less incoming damage" aria-pressed="false">
-            <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
-              <path class="formation-icon__guide" d="M5 5Q26 42 47 5"></path>
-              <circle cx="5" cy="5" r="2.4"></circle><circle cx="12" cy="13" r="2.4"></circle><circle cx="21" cy="24" r="2.4"></circle>
-              <circle cx="31" cy="24" r="2.4"></circle><circle cx="40" cy="13" r="2.4"></circle><circle cx="47" cy="5" r="2.4"></circle>
-              <circle class="formation-icon__command" cx="26" cy="31" r="3"></circle>
-            </svg>
-            <small>−32% DAMAGE</small>
-          </button>
-          <button class="formation-option" type="button" data-formation="splitWings" data-tooltip="Split wings · +48% side damage" aria-label="Split wings formation. Flank hunting and 48 percent more side damage" aria-pressed="false">
-            <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
-              <path class="formation-icon__guide" d="M5 8L13 21 21 8M31 8l8 13 8-13"></path>
-              <circle cx="5" cy="8" r="2.4"></circle><circle cx="13" cy="21" r="2.4"></circle><circle cx="21" cy="8" r="2.4"></circle>
-              <circle cx="31" cy="8" r="2.4"></circle><circle cx="39" cy="21" r="2.4"></circle><circle cx="47" cy="8" r="2.4"></circle>
-              <circle class="formation-icon__command" cx="26" cy="31" r="3"></circle>
-            </svg>
-            <small>+48% FLANK</small>
-          </button>
-          <button class="formation-option" type="button" data-formation="denseColumn" data-tooltip="Dense column · +42% gun damage" aria-label="Dense column formation. Synchronized cannon and 42 percent more flagship gun damage" aria-pressed="false">
-            <svg class="formation-icon" viewBox="0 0 52 34" aria-hidden="true">
-              <path class="formation-icon__guide" d="M26 3V31"></path>
-              <circle cx="26" cy="3" r="2.4"></circle><circle cx="26" cy="8" r="2.4"></circle><circle cx="26" cy="13" r="2.4"></circle>
-              <circle cx="26" cy="18" r="2.4"></circle><circle cx="26" cy="23" r="2.4"></circle><circle cx="26" cy="28" r="2.4"></circle>
-              <circle class="formation-icon__command" cx="26" cy="32" r="3"></circle>
-            </svg>
-            <small>+42% GUN</small>
-          </button>
+        <div id="formation-bar" class="formation-bar" role="group" aria-label="Custom formation command console">
+          <div class="geometry-strengths" aria-label="Live formation geometry bonuses">
+            <output id="spread-strength" class="geometry-strength" aria-label="Horizontal spread bonuses">RNG +0% · SIDE +0%</output>
+            <output id="cohesion-strength" class="geometry-strength" aria-label="Cohesion bonuses">RATE +0% · GUN +0%</output>
+            <output id="screening-strength" class="geometry-strength" aria-label="Flagship screening bonus">SCREEN −0%</output>
+          </div>
+          <div class="loadout-controls" role="group" aria-label="Formation loadouts">
+            <button class="loadout-option" type="button" data-loadout="0" aria-label="Activate formation loadout 1" aria-pressed="true">L1</button>
+            <button class="loadout-option" type="button" data-loadout="1" aria-label="Activate formation loadout 2, locked by Command Network" aria-pressed="false">L2</button>
+            <button class="loadout-option" type="button" data-loadout="2" aria-label="Activate formation loadout 3, locked by Command Network" aria-pressed="false">L3</button>
+          </div>
+          <label class="template-picker" for="formation-template">
+            <span>TEMPLATE</span>
+            <select id="formation-template" aria-label="Apply a starter template to the active loadout">
+              <option value="">Apply…</option>
+              <option value="line">Line</option>
+              <option value="wedge">Wedge</option>
+              <option value="defensiveArc">Defensive arc</option>
+              <option value="splitWings">Split wings</option>
+              <option value="denseColumn">Dense column</option>
+            </select>
+          </label>
+          <div class="formation-feedback" aria-live="polite">
+            <span id="formation-state">Drag a ship to edit L1</span>
+            <span id="tactical-edge" class="tactical-edge" aria-label="Tactical Edge 0 of 3">
+              <b>EDGE</b><i></i><i></i><i></i>
+            </span>
+          </div>
           <button id="shop-button" class="dock-upgrade" type="button" aria-label="Open fleet upgrades. 0 salvage available">
             <svg viewBox="0 0 40 32" aria-hidden="true">
               <path d="M8 23 20 9l12 14M12 25h16M20 9v17"></path>
@@ -103,11 +85,12 @@
           <span class="eyebrow eyebrow--bright">TACTICAL LINK // ONLINE</span>
           <h1 id="start-title">Hold the voidline.</h1>
           <p>
-            Your escorts fire automatically. Hold the battlefield and drag to sweep the flagship's pulsed cannon across the enemy approach. Sustained bursts build damage and critical-hit chance.
+            Build your own formation in the lower fleet zone. Drag ships away from enemy warnings, then aim the flagship's pulsed cannon across the upper battlefield.
           </p>
           <div class="control-primer" aria-label="Controls">
-            <div><span class="control-primer__icon">◎</span><span>Hold for stronger pulses and rising critical chance</span></div>
-            <div><span class="control-primer__icon">⌁</span><span>Partial charge fires; charge lights show available energy</span></div>
+            <div><span class="control-primer__icon">↔</span><span>Lower quarter: drag any ship onto the snap grid</span></div>
+            <div><span class="control-primer__icon">◎</span><span>Upper battlefield: hold and sweep the flagship cannon</span></div>
+            <div><span class="control-primer__icon">△</span><span>Evade complete attack warnings to bank Tactical Edge</span></div>
           </div>
           <button id="start-button" class="primary-button" type="button">
             <span>Deploy fleet</span><span aria-hidden="true">→</span>

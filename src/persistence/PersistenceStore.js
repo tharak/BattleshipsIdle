@@ -1,18 +1,59 @@
+import {
+  createStarterLoadouts,
+  normalizeFormationLoadouts,
+} from '../formations/FormationSystem.js';
+
+// Keep the established storage key so version-one players can be migrated in place.
 const STORAGE_KEY = 'voidline-command-save-v1';
+const SAVE_VERSION = 2;
 const MAX_OFFLINE_HOURS = 8;
 const MIN_OFFLINE_SECONDS = 60;
 
 export function createDefaultSave(now = Date.now()) {
   return {
-    version: 1,
+    version: SAVE_VERSION,
     currency: 0,
     upgrades: {},
     highestWave: 0,
     totalDestroyed: 0,
-    selectedFormation: 'line',
+    formationLoadouts: createStarterLoadouts('line'),
+    activeLoadoutIndex: 0,
     lastSeen: now,
     onboardingComplete: false,
     settings: { sound: true, screenShake: true },
+  };
+}
+
+export function migrateSave(source, now = Date.now()) {
+  const defaults = createDefaultSave(now);
+  const parsed = source && typeof source === 'object' ? source : {};
+  const legacyFormation = typeof parsed.selectedFormation === 'string'
+    ? parsed.selectedFormation
+    : 'line';
+  const legacy = Number(parsed.version || 1) < SAVE_VERSION;
+  const upgrades = parsed.upgrades && typeof parsed.upgrades === 'object'
+    ? { ...parsed.upgrades }
+    : {};
+  if (upgrades.commandNetwork === undefined && upgrades.formationMastery !== undefined) {
+    upgrades.commandNetwork = upgrades.formationMastery;
+  }
+  delete upgrades.formationMastery;
+
+  const formationLoadouts = legacy
+    ? createStarterLoadouts(legacyFormation)
+    : normalizeFormationLoadouts(parsed.formationLoadouts, legacyFormation);
+  const activeLoadoutIndex = legacy
+    ? 0
+    : Math.max(0, Math.min(2, Math.floor(Number(parsed.activeLoadoutIndex) || 0)));
+
+  return {
+    ...defaults,
+    ...parsed,
+    version: SAVE_VERSION,
+    upgrades,
+    settings: { ...defaults.settings, ...(parsed.settings ?? {}) },
+    formationLoadouts,
+    activeLoadoutIndex,
   };
 }
 
@@ -45,16 +86,15 @@ export class PersistenceStore {
 
   load() {
     const now = this.now();
-    let state = createDefaultSave(now);
+    let rawState = {};
     try {
       const raw = this.storage?.getItem(STORAGE_KEY);
-      if (raw) state = { ...state, ...JSON.parse(raw) };
+      if (raw) rawState = JSON.parse(raw);
     } catch {
-      state = createDefaultSave(now);
+      rawState = {};
     }
 
-    state.upgrades = state.upgrades && typeof state.upgrades === 'object' ? state.upgrades : {};
-    state.settings = { ...createDefaultSave(now).settings, ...(state.settings ?? {}) };
+    const state = migrateSave(rawState, now);
     const offline = calculateOfflineEarnings(state, now);
     state.currency = Math.max(0, Number(state.currency || 0)) + offline.earned;
     state.lastSeen = now;
@@ -63,7 +103,11 @@ export class PersistenceStore {
   }
 
   save(state) {
-    const payload = { ...state, version: 1, lastSeen: this.now() };
+    const payload = {
+      ...migrateSave(state, this.now()),
+      version: SAVE_VERSION,
+      lastSeen: this.now(),
+    };
     try {
       this.storage?.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {

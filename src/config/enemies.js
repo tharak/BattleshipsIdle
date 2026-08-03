@@ -7,15 +7,15 @@ export const ENEMY_TYPES = Object.freeze({
   }),
   skirmisher: Object.freeze({
     id: 'skirmisher', name: 'Skirmisher', unlockWave: 2, health: 0.7, speed: 1.48, damage: 0.82,
-    fireInterval: 0.8, reward: 1.15, drift: 2.4, attackType: 'bolt', scale: 0.82,
+    fireInterval: 0.8, reward: 1.15, drift: 2.4, attackType: 'bolt', majorAttack: 'skirmisher', scale: 0.82,
   }),
   bulwark: Object.freeze({
     id: 'bulwark', name: 'Bulwark', unlockWave: 3, health: 2.05, speed: 0.67, damage: 1.3,
-    fireInterval: 1.35, reward: 1.85, drift: 0.45, attackType: 'bolt', scale: 1.28,
+    fireInterval: 1.35, reward: 1.85, drift: 0.45, attackType: 'bolt', majorAttack: 'bulwark', scale: 1.28,
   }),
   artillery: Object.freeze({
     id: 'artillery', name: 'Artillery', unlockWave: 4, health: 1.08, speed: 0.76, damage: 1.2,
-    fireInterval: 1.5, reward: 1.7, drift: 0.72, attackType: 'area', areaRadius: 11, scale: 1.08,
+    fireInterval: 1.5, reward: 1.7, drift: 0.72, attackType: 'bolt', majorAttack: 'artillery', scale: 1.08,
   }),
 });
 

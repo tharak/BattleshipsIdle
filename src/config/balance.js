@@ -77,10 +77,53 @@ export const SIMULATION = Object.freeze({
 });
 
 export const FORMATION_CHANGE = Object.freeze({
-  duration: 1.15,
   cooldown: 2.6,
+  baseManeuverSpeed: 22,
+  maneuverSpeedPerLevel: 0.045,
   movingIncomingDamage: 1.14,
   movingAutoDamage: 0.78,
+});
+
+export const FORMATION_EDITOR = Object.freeze({
+  loadoutCount: 3,
+  gridSize: 5,
+  minimumSeparation: 6,
+  shipPickRadius: 6.5,
+  horizontalPadding: 5,
+  basePlacementHalfWidth: 35,
+  placementHalfWidthPerLevel: 0.75,
+  fleetZoneTopRatio: 0.25,
+  fleetZoneBottomPadding: 18,
+});
+
+export const GEOMETRY_BONUSES = Object.freeze({
+  baseCapRatio: 0.75,
+  rangeMaximum: 0.18,
+  sideDamageMaximum: 0.24,
+  fireRateMaximum: 0.1,
+  flagshipDamageMaximum: 0.35,
+  screeningMaximum: 0.3,
+  cohesionIdealRadius: 7,
+  cohesionFalloffRadius: 25,
+  screeningRadius: 30,
+  screeningFullWeight: 2.2,
+  sideTargetRatio: 0.42,
+});
+
+export const TACTICAL_EDGE = Object.freeze({
+  maximumStacks: 3,
+  damagePerStack: 0.12,
+  criticalChancePerStack: 0.08,
+});
+
+export const TELEGRAPH_ATTACKS = Object.freeze({
+  initialDelay: 2.6,
+  repeatDelay: 5.8,
+  repeatJitter: 1.4,
+  artillery: Object.freeze({ kind: 'blast', warning: 1.65, radius: 11, damageMultiplier: 1.55 }),
+  skirmisher: Object.freeze({ kind: 'lane', warning: 1.35, width: 8, damageMultiplier: 1.35 }),
+  bulwark: Object.freeze({ kind: 'focus', warning: 1.8, width: 4.8, damageMultiplier: 1.8 }),
+  boss: Object.freeze({ warning: 1.5, damageMultiplier: 1.55 }),
 });
 
 export const FORMATION_ORDER = Object.freeze([
@@ -97,67 +140,35 @@ export const FORMATIONS = Object.freeze({
     name: 'Line',
     shortName: 'Line',
     description: 'Broad coverage',
-    mechanic: '+12% range',
-    autoDamage: 1,
-    fireRate: 1,
-    range: 1.12,
-    incomingDamage: 1,
-    gunDamage: 1,
-    gunWidth: 1,
+    mechanic: 'Wide horizontal spread',
   }),
   wedge: Object.freeze({
     id: 'wedge',
     name: 'Wedge',
     shortName: 'Wedge',
     description: 'Forward pressure',
-    mechanic: '+18% auto damage',
-    autoDamage: 1.18,
-    fireRate: 1.04,
-    range: 0.95,
-    incomingDamage: 1.08,
-    gunDamage: 1.08,
-    gunWidth: 0.94,
+    mechanic: 'Layered forward pressure',
   }),
   defensiveArc: Object.freeze({
     id: 'defensiveArc',
     name: 'Defensive arc',
     shortName: 'Arc',
     description: 'Command shelter',
-    mechanic: '-32% incoming damage',
-    autoDamage: 0.87,
-    fireRate: 0.92,
-    range: 0.96,
-    incomingDamage: 0.68,
-    gunDamage: 0.9,
-    gunWidth: 1.06,
+    mechanic: 'Flagship screening',
   }),
   splitWings: Object.freeze({
     id: 'splitWings',
     name: 'Split wings',
     shortName: 'Wings',
     description: 'Flank hunters',
-    mechanic: '+48% side damage',
-    autoDamage: 0.9,
-    fireRate: 1.02,
-    range: 1.08,
-    incomingDamage: 1.05,
-    gunDamage: 1.02,
-    gunWidth: 1.08,
-    sideDamage: 1.48,
-    centerDamage: 0.82,
+    mechanic: 'Separated maneuver wings',
   }),
   denseColumn: Object.freeze({
     id: 'denseColumn',
     name: 'Dense column',
     shortName: 'Column',
     description: 'Synchronized cannon',
-    mechanic: '+42% flagship gun damage',
-    autoDamage: 1.08,
-    fireRate: 1.06,
-    range: 0.9,
-    incomingDamage: 1.28,
-    gunDamage: 1.42,
-    gunWidth: 0.76,
+    mechanic: 'High-cohesion gun line',
   }),
 });
 

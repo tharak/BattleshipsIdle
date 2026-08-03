@@ -77,6 +77,7 @@ export class GameRenderer {
     this.entityMeshes = new Map();
     this.projectileMeshes = new Map();
     this.effects = [];
+    this.telegraphMeshes = new Map();
     this.combatBounds = { ...ARENA, halfWidth: ARENA.maxX };
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -90,6 +91,7 @@ export class GameRenderer {
     this.damageNumberPool = this.createDamageNumberPool();
     this.createEnvironment();
     this.createTargetMarker();
+    this.createFormationEditor();
     this.resize();
   }
 
@@ -325,6 +327,169 @@ export class GameRenderer {
     this.targetMarker.visible = false;
     this.targetMarker.userData.life = 0;
     this.scene.add(this.targetMarker);
+  }
+
+  createFormationEditor() {
+    const config = RENDERING.formationEditor;
+    this.formationEditor = new THREE.Group();
+    this.formationEditor.visible = false;
+    this.formationGrid = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        color: RENDER_COLORS.formationGrid,
+        size: config.gridPointSize,
+        transparent: true,
+        opacity: config.gridOpacity,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    this.formationBoundary = new THREE.LineLoop(
+      new THREE.BufferGeometry(),
+      new THREE.LineDashedMaterial({
+        color: RENDER_COLORS.formationBoundary,
+        transparent: true,
+        opacity: config.boundaryOpacity,
+        dashSize: config.boundaryDashSize,
+        gapSize: config.boundaryGapSize,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    const ghostMaterial = new THREE.MeshBasicMaterial({
+      color: RENDER_COLORS.placementValid,
+      transparent: true,
+      opacity: config.ghostOpacity,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: RENDER_COLORS.placementValid,
+      transparent: true,
+      opacity: config.ringOpacity,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.formationGhost = new THREE.Group();
+    this.formationGhost.add(
+      new THREE.Mesh(new THREE.CircleGeometry(config.ghostRadius, 28), ghostMaterial),
+      new THREE.Mesh(
+        new THREE.RingGeometry(config.separationRadius - 0.12, config.separationRadius, 40),
+        ringMaterial,
+      ),
+    );
+    this.formationEditor.add(this.formationGrid, this.formationBoundary, this.formationGhost);
+    this.formationEditor.position.z = config.z;
+    this.scene.add(this.formationEditor);
+  }
+
+  refreshFormationGrid(placement) {
+    const { bounds, gridSize } = placement;
+    const signature = `${bounds.minX}:${bounds.maxX}:${bounds.minY}:${bounds.maxY}:${gridSize}`;
+    if (signature === this.formationEditor.userData.gridSignature) return;
+    this.formationEditor.userData.gridSignature = signature;
+    const points = [];
+    for (let y = bounds.minY; y <= bounds.maxY; y += gridSize) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += gridSize) points.push(new THREE.Vector3(x, y, 0));
+    }
+    this.formationGrid.geometry.dispose();
+    this.formationGrid.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    this.formationBoundary.geometry.dispose();
+    this.formationBoundary.geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(bounds.minX, bounds.minY, 0),
+      new THREE.Vector3(bounds.maxX, bounds.minY, 0),
+      new THREE.Vector3(bounds.maxX, bounds.maxY, 0),
+      new THREE.Vector3(bounds.minX, bounds.maxY, 0),
+    ]);
+    this.formationBoundary.computeLineDistances();
+  }
+
+  syncFormationEditor(formation) {
+    const preview = formation?.preview;
+    this.formationEditor.visible = Boolean(preview);
+    if (!preview) return;
+    this.refreshFormationGrid(formation.placement);
+    this.formationGhost.position.set(preview.candidate.x, preview.candidate.y, 0.05);
+    const color = preview.valid ? RENDER_COLORS.placementValid : RENDER_COLORS.placementInvalid;
+    for (const child of this.formationGhost.children) child.material.color.setHex(color);
+  }
+
+  createTelegraphMesh(telegraph) {
+    const color = telegraph.kind === 'blast'
+      ? RENDER_COLORS.telegraphBlast
+      : telegraph.kind === 'lane' ? RENDER_COLORS.telegraphLane : RENDER_COLORS.telegraphFocus;
+    const fillMaterial = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: RENDERING.telegraph.fillOpacity,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: RENDERING.telegraph.edgeOpacity,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const group = new THREE.Group();
+    if (telegraph.kind === 'blast') {
+      group.add(
+        new THREE.Mesh(new THREE.CircleGeometry(telegraph.radius, 48), fillMaterial),
+        new THREE.Mesh(new THREE.RingGeometry(telegraph.radius - 0.45, telegraph.radius, 48), edgeMaterial),
+      );
+      group.position.set(telegraph.x, telegraph.y, RENDERING.telegraph.z);
+    } else {
+      const dx = telegraph.target.x - telegraph.source.x;
+      const dy = telegraph.target.y - telegraph.source.y;
+      const length = Math.hypot(dx, dy);
+      group.add(
+        new THREE.Mesh(new THREE.PlaneGeometry(telegraph.width, length), fillMaterial),
+        new THREE.Mesh(new THREE.RingGeometry(0.7, 1.05, 24), edgeMaterial),
+      );
+      group.position.set(
+        (telegraph.source.x + telegraph.target.x) / 2,
+        (telegraph.source.y + telegraph.target.y) / 2,
+        RENDERING.telegraph.z,
+      );
+      group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+      group.children[1].position.y = length / 2;
+    }
+    group.userData.materials = [fillMaterial, edgeMaterial];
+    this.scene.add(group);
+    return group;
+  }
+
+  syncTelegraphs(telegraphs = []) {
+    const activeIds = new Set();
+    for (const telegraph of telegraphs) {
+      activeIds.add(telegraph.id);
+      let group = this.telegraphMeshes.get(telegraph.id);
+      if (!group) {
+        group = this.createTelegraphMesh(telegraph);
+        this.telegraphMeshes.set(telegraph.id, group);
+      }
+      const urgency = Math.max(0, Math.min(1, telegraph.progress ?? 0));
+      const pulse = RENDERING.telegraph.minimumPulse
+        + (1 - RENDERING.telegraph.minimumPulse)
+        * (0.5 + Math.sin(this.clockTime * RENDERING.telegraph.pulseSpeed) * 0.5);
+      group.userData.materials[0].opacity = RENDERING.telegraph.fillOpacity * (0.7 + urgency * 1.7) * pulse;
+      group.userData.materials[1].opacity = RENDERING.telegraph.edgeOpacity * (0.55 + urgency * 0.45);
+      group.scale.setScalar(1 + Math.sin(this.clockTime * RENDERING.telegraph.pulseSpeed) * RENDERING.telegraph.scalePulse);
+    }
+    for (const [id, group] of this.telegraphMeshes) {
+      if (activeIds.has(id)) continue;
+      this.scene.remove(group);
+      group.traverse((child) => {
+        child.geometry?.dispose();
+        child.material?.dispose();
+      });
+      this.telegraphMeshes.delete(id);
+    }
   }
 
   createProjectilePool() {
@@ -688,6 +853,8 @@ export class GameRenderer {
     this.clockTime += deltaSeconds;
     this.syncEntities([...snapshot.friendlies, ...snapshot.enemies], snapshot.flagshipGun, deltaSeconds);
     this.syncProjectiles(snapshot.projectiles);
+    this.syncTelegraphs(snapshot.telegraphs);
+    this.syncFormationEditor(snapshot.formation);
     this.updateEffects(deltaSeconds);
     this.updateTargetMarker(deltaSeconds);
 
@@ -902,8 +1069,14 @@ export class GameRenderer {
       } else if (event.type === 'breach') {
         this.spawnImpact(event.x, event.y, RENDER_COLORS.enemy, RENDERING.eventEffects.breachImpact);
         this.shake = Math.max(this.shake, RENDERING.eventEffects.breachShake);
-      } else if (event.type === 'formationChanged') {
+      } else if (['formationChanged', 'formationShipMoved', 'loadoutActivated'].includes(event.type)) {
         this.spawnFormationTrails(event.paths);
+      } else if (event.type === 'telegraphResolved' && event.kind !== 'blast') {
+        const point = event.target ?? event.source;
+        this.spawnImpact(point.x, point.y, RENDER_COLORS.enemy, RENDERING.telegraph.resolvedImpact);
+      } else if (event.type === 'telegraphEvaded') {
+        const command = [...this.entityMeshes.values()].find((mesh) => mesh.userData.entity?.role === 'command');
+        if (command) this.spawnImpact(command.position.x, command.position.y, RENDER_COLORS.placementValid, RENDERING.telegraph.evadedImpact);
       } else if (event.type === 'shieldImpact') {
         this.spawnImpact(event.x, event.y, RENDER_COLORS.shield, RENDERING.eventEffects.shieldImpact);
         this.spawnDamageNumber({ ...event, amount: event.absorbed, faction: 'friendly', shield: true });
@@ -1100,6 +1273,7 @@ export class GameRenderer {
   }
 
   spawnFormationTrails(paths) {
+    if (!paths?.length) return;
     const material = new THREE.LineDashedMaterial({
       color: RENDER_COLORS.friendly,
       transparent: true,
@@ -1337,8 +1511,17 @@ export class GameRenderer {
       }
     }
     this.effects = [];
+    for (const group of this.telegraphMeshes.values()) {
+      this.scene.remove(group);
+      group.traverse((child) => {
+        child.geometry?.dispose();
+        child.material?.dispose();
+      });
+    }
+    this.telegraphMeshes.clear();
     this.shake = 0;
     this.targetMarker.visible = false;
+    this.formationEditor.visible = false;
   }
 
   disposeGroupGeometry(group) {
