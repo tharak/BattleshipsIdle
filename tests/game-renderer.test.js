@@ -63,4 +63,16 @@ describe('damage number formatting', () => {
     }
     expect(Object.isFrozen(RENDERING.ships.profiles.command)).toBe(true);
   });
+
+  it('gives each friendly combat role unmistakable model hardware', () => {
+    const hardware = RENDERING.ships.roleHardware;
+
+    expect(hardware.escort.barrelPositions).toHaveLength(2);
+    expect(hardware.lancer.railPositions).toHaveLength(2);
+    expect(hardware.lancer.railSize[1]).toBeGreaterThan(hardware.escort.barrelSize[1]);
+    expect(hardware.guardian.prowPoints).toHaveLength(6);
+    expect(hardware.guardian.bracePositions).toHaveLength(2);
+    expect(RENDER_COLORS.lancer).not.toBe(RENDER_COLORS.friendly);
+    expect(RENDER_COLORS.guardian).not.toBe(RENDER_COLORS.friendly);
+  });
 });

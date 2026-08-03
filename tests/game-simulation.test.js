@@ -571,8 +571,14 @@ describe('GameSimulation', () => {
     });
 
     expect(simulation.friendlies).toHaveLength(9);
-    expect(simulation.friendlies.some((ship) => ship.role === 'lancer')).toBe(true);
-    expect(simulation.friendlies.some((ship) => ship.role === 'guardian')).toBe(true);
+    const escort = simulation.friendlies.find((ship) => ship.role === 'escort');
+    const lancer = simulation.friendlies.find((ship) => ship.role === 'lancer');
+    const guardian = simulation.friendlies.find((ship) => ship.role === 'guardian');
+
+    expect(lancer.fireInterval).toBeLessThan(escort.fireInterval);
+    expect(lancer.maxHealth).toBeLessThan(escort.maxHealth);
+    expect(guardian.maxHealth).toBeGreaterThan(escort.maxHealth);
+    expect(guardian.damage).toBeLessThan(escort.damage);
   });
 
   it('edits the active loadout live, moves the flagship, and rejects invalid drops', () => {

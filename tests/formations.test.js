@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FORMATION_CHANGE, FORMATION_EDITOR } from '../src/config/balance.js';
-import { FormationSystem } from '../src/formations/FormationSystem.js';
+import { FormationSystem, getStarterTemplatePositions } from '../src/formations/FormationSystem.js';
 
 function fleet() {
   return Array.from({ length: 7 }, (_, slot) => ({
@@ -34,6 +34,13 @@ describe('FormationSystem', () => {
         }
       }
     }
+  });
+
+  it('places newly unlocked role ships in a visible mirrored row', () => {
+    const expandedLine = getStarterTemplatePositions('line', 9);
+
+    expect(expandedLine[7]).toMatchObject({ x: -30, y: -45 });
+    expect(expandedLine[8]).toMatchObject({ x: 30, y: -45 });
   });
 
   it('snaps to a five-unit grid and rejects boundaries and overlap', () => {

@@ -1087,8 +1087,20 @@ export class GameSimulation {
     if (role === 'command') {
       return { health: FLEET.commandHealth, damage: FLEET.commandDamage, fireInterval: FLEET.commandFireInterval };
     }
-    if (role === 'lancer') return { health: 78, damage: 17, fireInterval: 0.9 };
-    if (role === 'guardian') return { health: 158, damage: 7.5, fireInterval: 1.02 };
+    if (role === 'lancer') {
+      return {
+        health: FLEET.lancerHealth,
+        damage: FLEET.lancerDamage,
+        fireInterval: FLEET.lancerFireInterval,
+      };
+    }
+    if (role === 'guardian') {
+      return {
+        health: FLEET.guardianHealth,
+        damage: FLEET.guardianDamage,
+        fireInterval: FLEET.guardianFireInterval,
+      };
+    }
     return { health: FLEET.escortHealth, damage: FLEET.escortDamage, fireInterval: FLEET.escortFireInterval };
   }
 

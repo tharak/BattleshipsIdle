@@ -36,8 +36,10 @@ export function getStarterTemplatePositions(templateId = 'line', count = 7) {
   const layout = STARTER_LAYOUTS[templateId] ?? STARTER_LAYOUTS.line;
   const positions = layout.map(([x, y], slot) => ({ slot, x, y }));
   const candidates = [];
-  for (let y = -55; y <= -40; y += FORMATION_EDITOR.gridSize) {
-    for (let x = -30; x <= 30; x += FORMATION_EDITOR.gridSize) candidates.push({ x, y });
+  const extraRows = [-45, -50, -55, -40];
+  const mirroredColumns = [-30, 30, -20, 20, -10, 10, 0];
+  for (const y of extraRows) {
+    for (const x of mirroredColumns) candidates.push({ x, y });
   }
   while (positions.length < count) {
     const point = candidates.find((candidate) => positions.every((position) => distance(position, candidate) >= FORMATION_EDITOR.minimumSeparation));

@@ -132,6 +132,10 @@ export class GameRenderer {
       friendlyArmorMaterial: createMaterial(RENDER_COLORS.friendlyArmor, armorOptions),
       friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
       friendlyAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendly }),
+      lancerArmorMaterial: createMaterial(RENDER_COLORS.lancerArmor, armorOptions),
+      lancerAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.lancer }),
+      guardianArmorMaterial: createMaterial(RENDER_COLORS.guardianArmor, armorOptions),
+      guardianAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.guardian }),
       commandMaterial: createMaterial(RENDER_COLORS.commandHull, {
         ...hullOptions,
         emissive: RENDER_COLORS.command,
@@ -173,6 +177,8 @@ export class GameRenderer {
         roughness: RENDERING.material.canopyRoughness,
       }),
       engineFriendlyMaterial: glowMaterial(RENDER_COLORS.engineFriendly),
+      engineLancerMaterial: glowMaterial(RENDER_COLORS.engineLancer),
+      engineGuardianMaterial: glowMaterial(RENDER_COLORS.engineGuardian),
       engineCommandMaterial: glowMaterial(RENDER_COLORS.engineCommand),
       engineEnemyMaterial: glowMaterial(RENDER_COLORS.engineEnemy),
       engineEliteMaterial: glowMaterial(RENDER_COLORS.engineElite),
@@ -628,13 +634,29 @@ export class GameRenderer {
           engine: this.shared.engineCommandMaterial,
         }
       : friendly
-        ? {
-            hull: this.shared.friendlyMaterial,
-            armor: this.shared.friendlyArmorMaterial,
-            accent: this.shared.friendlyAccentMaterial,
-            canopy: this.shared.canopyMaterial,
-            engine: this.shared.engineFriendlyMaterial,
-          }
+        ? entity.role === 'lancer'
+          ? {
+              hull: this.shared.friendlyMaterial,
+              armor: this.shared.lancerArmorMaterial,
+              accent: this.shared.lancerAccentMaterial,
+              canopy: this.shared.canopyMaterial,
+              engine: this.shared.engineLancerMaterial,
+            }
+          : entity.role === 'guardian'
+            ? {
+                hull: this.shared.friendlyMaterial,
+                armor: this.shared.guardianArmorMaterial,
+                accent: this.shared.guardianAccentMaterial,
+                canopy: this.shared.canopyMaterial,
+                engine: this.shared.engineGuardianMaterial,
+              }
+            : {
+                hull: this.shared.friendlyMaterial,
+                armor: this.shared.friendlyArmorMaterial,
+                accent: this.shared.friendlyAccentMaterial,
+                canopy: this.shared.canopyMaterial,
+                engine: this.shared.engineFriendlyMaterial,
+              }
         : entity.boss
           ? {
               hull: this.shared.bossMaterial,
@@ -730,6 +752,73 @@ export class GameRenderer {
         RENDERING.ships.navLightZ,
       );
       group.add(navLight);
+    }
+
+    const muzzleFlashes = [];
+    if (friendly && entity.role === 'escort') {
+      const hardware = RENDERING.ships.roleHardware.escort;
+      for (const [x, y] of hardware.barrelPositions) {
+        const barrel = new THREE.Mesh(
+          new THREE.BoxGeometry(...hardware.barrelSize),
+          this.shared.darkMaterial,
+        );
+        barrel.position.set(x, y, hardware.barrelZ);
+        const muzzle = new THREE.Mesh(
+          new THREE.BoxGeometry(...hardware.muzzleSize),
+          palette.accent,
+        );
+        muzzle.position.y = hardware.muzzleOffsetY;
+        barrel.add(muzzle);
+        group.add(barrel);
+      }
+    }
+
+    if (friendly && entity.role === 'lancer') {
+      const hardware = RENDERING.ships.roleHardware.lancer;
+      for (const [x, y] of hardware.railPositions) {
+        const rail = new THREE.Group();
+        const housing = new THREE.Mesh(
+          new THREE.BoxGeometry(...hardware.railSize),
+          palette.armor,
+        );
+        const stripe = new THREE.Mesh(
+          new THREE.BoxGeometry(...hardware.railStripeSize),
+          palette.accent,
+        );
+        stripe.position.z = hardware.railStripeZ;
+        const muzzleFlash = new THREE.Mesh(
+          new THREE.CircleGeometry(hardware.muzzleRadius, hardware.muzzleSegments),
+          palette.engine,
+        );
+        muzzleFlash.position.set(0, hardware.muzzleOffsetY, hardware.muzzleZ);
+        muzzleFlash.visible = false;
+        muzzleFlashes.push(muzzleFlash);
+        rail.position.set(x, y, hardware.railZ);
+        rail.add(housing, stripe, muzzleFlash);
+        group.add(rail);
+      }
+    }
+
+    if (friendly && entity.role === 'guardian') {
+      const hardware = RENDERING.ships.roleHardware.guardian;
+      const prow = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(
+          makeShape(hardware.prowPoints),
+          { ...hardware.prowExtrusion, bevelEnabled: true },
+        ),
+        palette.armor,
+      );
+      prow.position.z = hardware.prowZ;
+      group.add(prow);
+      for (const [x, y, angle] of hardware.bracePositions) {
+        const brace = new THREE.Mesh(
+          new THREE.BoxGeometry(...hardware.braceSize),
+          palette.accent,
+        );
+        brace.position.set(x, y, hardware.braceZ);
+        brace.rotation.z = angle;
+        group.add(brace);
+      }
     }
 
     let turret = null;
@@ -844,6 +933,9 @@ export class GameRenderer {
     group.userData.hullContour = hullContour;
     group.userData.turret = turret;
     group.userData.engineGlows = engineGlows;
+    group.userData.muzzleFlashes = muzzleFlashes;
+    group.userData.muzzleFlashRemaining = 0;
+    group.userData.muzzleFlashIndex = 0;
     group.userData.entity = entity;
     this.scene.add(group);
     return group;
@@ -977,6 +1069,24 @@ export class GameRenderer {
           baseZ,
         );
       });
+      if (group.userData.muzzleFlashes.length > 0) {
+        const hardware = RENDERING.ships.roleHardware.lancer;
+        const flashProgress = Math.max(
+          0,
+          group.userData.muzzleFlashRemaining / hardware.flashDuration,
+        );
+        group.userData.muzzleFlashes.forEach((muzzleFlash, index) => {
+          muzzleFlash.visible = flashProgress > 0 && index === group.userData.muzzleFlashIndex;
+          muzzleFlash.scale.setScalar(
+            hardware.flashBaseScale
+              + flashProgress * hardware.flashPulseScale,
+          );
+        });
+        group.userData.muzzleFlashRemaining = Math.max(
+          0,
+          group.userData.muzzleFlashRemaining - deltaSeconds,
+        );
+      }
       const readyPulse = entity.role === 'command'
         && energyRatio >= RENDERING.entityAnimation.readyEnergyThreshold
         ? Math.sin(this.clockTime * RENDERING.entityAnimation.readyPulseSpeed)
@@ -1026,7 +1136,14 @@ export class GameRenderer {
 
   handleEvents(events) {
     for (const event of events) {
-      if (event.type === 'impact') {
+      if (event.type === 'projectileFired' && event.sourceRole === 'lancer') {
+        const lancer = this.entityMeshes.get(event.sourceId);
+        if (lancer?.userData.muzzleFlashes.length > 0) {
+          lancer.userData.muzzleFlashIndex = (lancer.userData.muzzleFlashIndex + 1)
+            % lancer.userData.muzzleFlashes.length;
+          lancer.userData.muzzleFlashRemaining = RENDERING.ships.roleHardware.lancer.flashDuration;
+        }
+      } else if (event.type === 'impact') {
         this.spawnImpact(
           event.x,
           event.y,
