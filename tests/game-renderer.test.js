@@ -27,6 +27,14 @@ describe('damage number formatting', () => {
     expect(source).not.toMatch(/0x[\da-f]+|#[\da-f]{3,8}/i);
   });
 
+  it('renders friendly shields from the ship silhouette instead of a circular ring', () => {
+    const rendererPath = fileURLToPath(new URL('../src/rendering/GameRenderer.js', import.meta.url));
+    const source = readFileSync(rendererPath, 'utf8');
+
+    expect(source).toContain('new THREE.LineLoop');
+    expect(source).not.toContain('shieldRing');
+  });
+
   it('defines a complete layered visual profile for every ship archetype', () => {
     const archetypes = [
       'escort',

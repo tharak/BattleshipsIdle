@@ -147,13 +147,6 @@ export class GameRenderer {
       engineEnemyMaterial: glowMaterial(RENDER_COLORS.engineEnemy),
       engineEliteMaterial: glowMaterial(RENDER_COLORS.engineElite),
       engineBossMaterial: glowMaterial(RENDER_COLORS.engineBoss),
-      friendlyHaloMaterial: new THREE.MeshBasicMaterial({
-        color: RENDER_COLORS.friendly,
-        transparent: true,
-        opacity: RENDERING.material.friendlyHaloOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
       enemyHaloMaterial: new THREE.MeshBasicMaterial({
         color: RENDER_COLORS.enemy,
         transparent: true,
@@ -169,11 +162,19 @@ export class GameRenderer {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
-      shieldMaterial: new THREE.MeshBasicMaterial({
+      shieldMaterial: new THREE.LineBasicMaterial({
         color: RENDER_COLORS.shield,
         transparent: true,
         opacity: RENDERING.material.shieldOpacity,
-        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+      shieldGlowMaterial: new THREE.LineBasicMaterial({
+        color: RENDER_COLORS.shield,
+        transparent: true,
+        opacity: RENDERING.material.shieldGlowOpacity,
+        depthTest: false,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
@@ -607,29 +608,39 @@ export class GameRenderer {
 
     const halo = new THREE.Mesh(
       this.shared.haloGeometry,
-      friendly
-        ? this.shared.friendlyHaloMaterial
-        : entity.boss ? this.shared.bossHaloMaterial : this.shared.enemyHaloMaterial,
+      entity.boss ? this.shared.bossHaloMaterial : this.shared.enemyHaloMaterial,
     );
     halo.position.z = RENDERING.ships.haloZ;
+    halo.visible = !friendly;
     halo.scale.setScalar(
       entity.boss
         ? RENDERING.ships.haloScales.boss
-        : command
-          ? RENDERING.ships.haloScales.command
-          : entity.elite ? RENDERING.ships.haloScales.elite : RENDERING.ships.haloScales.standard,
+        : entity.elite ? RENDERING.ships.haloScales.elite : RENDERING.ships.haloScales.standard,
     );
     group.add(halo);
 
-    let shieldRing = null;
+    let shieldOutline = null;
     if (friendly) {
-      shieldRing = new THREE.Mesh(this.shared.haloGeometry, this.shared.shieldMaterial);
-      shieldRing.position.z = RENDERING.ships.shieldZ;
-      shieldRing.scale.setScalar(
-        command ? RENDERING.ships.shieldScales.command : RENDERING.ships.shieldScales.standard,
-      );
-      shieldRing.visible = entity.maxShield > 0;
-      group.add(shieldRing);
+      shieldOutline = new THREE.Group();
+      const outlinePoints = shapePoints.map(([x, y]) => new THREE.Vector3(x, y, 0));
+      const createShieldLayer = (sharedMaterial, layerScale) => {
+        const material = sharedMaterial.clone();
+        material.userData.disposeWithShip = true;
+        const outline = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(outlinePoints),
+          material,
+        );
+        outline.scale.setScalar(layerScale);
+        outline.renderOrder = RENDERING.ships.shieldOutline.renderOrder;
+        outline.userData.baseOpacity = material.opacity;
+        shieldOutline.add(outline);
+      };
+      createShieldLayer(this.shared.shieldGlowMaterial, RENDERING.ships.shieldOutline.glowScale);
+      createShieldLayer(this.shared.shieldMaterial, 1);
+      shieldOutline.position.z = RENDERING.ships.shieldOutline.z;
+      shieldOutline.scale.setScalar(RENDERING.ships.shieldOutline.scale);
+      shieldOutline.visible = entity.maxShield > 0;
+      group.add(shieldOutline);
     }
 
     let healthGroup = null;
@@ -682,7 +693,7 @@ export class GameRenderer {
     group.userData.health = healthGroup;
     group.userData.chargeGroup = chargeGroup;
     group.userData.halo = halo;
-    group.userData.shieldRing = shieldRing;
+    group.userData.shieldOutline = shieldOutline;
     group.userData.turret = turret;
     group.userData.engineGlows = engineGlows;
     group.userData.entity = entity;
@@ -783,17 +794,25 @@ export class GameRenderer {
             + Math.sin(this.clockTime * RENDERING.entityAnimation.bossPulseSpeed)
             * RENDERING.entityAnimation.bossPulseOpacity;
       }
-      if (group.userData.shieldRing) {
-        const shieldRatio = entity.maxShield > 0 ? entity.shield / entity.maxShield : 0;
-        group.userData.shieldRing.visible = shieldRatio > 0;
-        group.userData.shieldRing.rotation.z += RENDERING.entityAnimation.shieldRotation;
-        group.userData.shieldRing.scale.setScalar(
-          (entity.role === 'command'
-            ? RENDERING.ships.shieldScales.command
-            : RENDERING.ships.shieldScales.standard)
+      if (group.userData.shieldOutline) {
+        const shieldRatio = entity.maxShield > 0
+          ? Math.max(0, Math.min(1, entity.shield / entity.maxShield))
+          : 0;
+        const shieldPulse = Math.sin(
+          this.clockTime * RENDERING.entityAnimation.shieldPulseSpeed + (entity.slot ?? 0),
+        ) * RENDERING.entityAnimation.shieldPulseScale * shieldRatio;
+        group.userData.shieldOutline.visible = shieldRatio > 0;
+        group.userData.shieldOutline.scale.setScalar(
+          RENDERING.ships.shieldOutline.scale
           * (RENDERING.entityAnimation.shieldMinimumScale
-            + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale),
+            + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale
+            + shieldPulse),
         );
+        group.userData.shieldOutline.children.forEach((outline) => {
+          outline.material.opacity = outline.userData.baseOpacity
+            * (RENDERING.entityAnimation.shieldMinimumOpacity
+              + shieldRatio * RENDERING.entityAnimation.shieldEnergyOpacity);
+        });
       }
       group.userData.engineGlows.forEach((engineGlow, index) => {
         const enginePulse = 1 + Math.sin(
@@ -1341,7 +1360,7 @@ export class GameRenderer {
 
   disposeGroupGeometry(group) {
     group.traverse((child) => {
-      if (child.isMesh && ![
+      if (child.geometry && ![
         this.shared.haloGeometry,
         this.shared.projectileGeometry,
         this.shared.ringGeometry,
