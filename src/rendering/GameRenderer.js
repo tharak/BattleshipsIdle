@@ -1,18 +1,7 @@
 import * as THREE from 'three';
 import { ARENA } from '../config/balance.js';
+import { RENDER_COLORS, RENDERING } from '../config/rendering.js';
 import { ObjectPool } from './ObjectPool.js';
-
-const COLORS = Object.freeze({
-  background: 0x040713,
-  friendly: 0x54f4eb,
-  friendlyCore: 0xe7ffff,
-  command: 0xffc76c,
-  enemy: 0xff596f,
-  enemyCore: 0xffc0c7,
-  elite: 0xffb14a,
-  boss: 0xb76cff,
-  grid: 0x17314d,
-});
 
 export function formatDamageAmount(amount) {
   return Math.max(1, Math.round(Number(amount) || 0)).toLocaleString('en-US');
@@ -32,9 +21,9 @@ function createMaterial(color, options = {}) {
   return new THREE.MeshStandardMaterial({
     color,
     emissive: color,
-    emissiveIntensity: options.emissiveIntensity ?? 0.62,
-    metalness: 0.68,
-    roughness: 0.28,
+    emissiveIntensity: options.emissiveIntensity ?? RENDERING.material.emissiveIntensity,
+    metalness: RENDERING.material.metalness,
+    roughness: RENDERING.material.roughness,
     transparent: options.transparent ?? false,
     opacity: options.opacity ?? 1,
     depthWrite: options.depthWrite ?? true,
@@ -45,20 +34,24 @@ export class GameRenderer {
   constructor(container) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(COLORS.background);
-    this.scene.fog = new THREE.FogExp2(COLORS.background, 0.0022);
+    this.scene.background = new THREE.Color(RENDER_COLORS.background);
+    this.scene.fog = new THREE.FogExp2(RENDER_COLORS.background, RENDERING.scene.fogDensity);
 
-    this.camera = new THREE.OrthographicCamera(-55, 55, 82, -82, 0.1, 500);
-    this.camera.position.set(0, -38, 180);
+    this.camera = new THREE.OrthographicCamera(
+      ...RENDERING.scene.cameraFrustum,
+      RENDERING.scene.cameraNear,
+      RENDERING.scene.cameraFar,
+    );
+    this.camera.position.set(...RENDERING.scene.cameraPosition);
     this.camera.lookAt(0, 0, 0);
     this.baseCameraPosition = this.camera.position.clone();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, RENDERING.scene.maxPixelRatio));
     this.renderer.setSize(container.clientWidth, container.clientHeight, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.24;
+    this.renderer.toneMappingExposure = RENDERING.scene.toneMappingExposure;
     container.appendChild(this.renderer.domElement);
 
     this.clockTime = 0;
@@ -70,7 +63,7 @@ export class GameRenderer {
     this.combatBounds = { ...ARENA, halfWidth: ARENA.maxX };
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
-    this.battlePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    this.battlePlane = new THREE.Plane(new THREE.Vector3(...RENDERING.scene.battlePlaneNormal), 0);
     this.worldPoint = new THREE.Vector3();
 
     this.shared = this.createSharedResources();
@@ -85,95 +78,108 @@ export class GameRenderer {
 
   createSharedResources() {
     return {
-      friendlyMaterial: createMaterial(COLORS.friendly),
-      friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: COLORS.friendlyCore }),
-      commandMaterial: createMaterial(COLORS.command, { emissiveIntensity: 0.78 }),
-      enemyMaterial: createMaterial(COLORS.enemy, { emissiveIntensity: 0.88 }),
-      eliteMaterial: createMaterial(COLORS.elite, { emissiveIntensity: 0.96 }),
-      bossMaterial: createMaterial(COLORS.boss, { emissiveIntensity: 1.08 }),
-      enemyCoreMaterial: new THREE.MeshBasicMaterial({ color: COLORS.enemyCore }),
+      friendlyMaterial: createMaterial(RENDER_COLORS.friendly),
+      friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
+      commandMaterial: createMaterial(RENDER_COLORS.command, { emissiveIntensity: RENDERING.material.commandEmissiveIntensity }),
+      enemyMaterial: createMaterial(RENDER_COLORS.enemy, { emissiveIntensity: RENDERING.material.enemyEmissiveIntensity }),
+      eliteMaterial: createMaterial(RENDER_COLORS.elite, { emissiveIntensity: RENDERING.material.eliteEmissiveIntensity }),
+      bossMaterial: createMaterial(RENDER_COLORS.boss, { emissiveIntensity: RENDERING.material.bossEmissiveIntensity }),
+      enemyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemyCore }),
       friendlyHaloMaterial: new THREE.MeshBasicMaterial({
-        color: COLORS.friendly,
+        color: RENDER_COLORS.friendly,
         transparent: true,
-        opacity: 0.18,
+        opacity: RENDERING.material.friendlyHaloOpacity,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
       enemyHaloMaterial: new THREE.MeshBasicMaterial({
-        color: COLORS.enemy,
+        color: RENDER_COLORS.enemy,
         transparent: true,
-        opacity: 0.18,
+        opacity: RENDERING.material.enemyHaloOpacity,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
       bossHaloMaterial: new THREE.MeshBasicMaterial({
-        color: COLORS.boss,
+        color: RENDER_COLORS.boss,
         transparent: true,
-        opacity: 0.32,
+        opacity: RENDERING.material.bossHaloOpacity,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
       shieldMaterial: new THREE.MeshBasicMaterial({
-        color: 0x72a7ff,
+        color: RENDER_COLORS.shield,
         transparent: true,
-        opacity: 0.46,
+        opacity: RENDERING.material.shieldOpacity,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
-      darkMaterial: createMaterial(0x0a1629, { emissiveIntensity: 0.08 }),
-      healthMaterial: new THREE.MeshBasicMaterial({ color: COLORS.friendly }),
-      enemyHealthMaterial: new THREE.MeshBasicMaterial({ color: COLORS.enemy }),
-      healthBackMaterial: new THREE.MeshBasicMaterial({ color: 0x172033, transparent: true, opacity: 0.7 }),
-      projectileFriendly: new THREE.MeshBasicMaterial({ color: COLORS.friendlyCore }),
-      projectileEnemy: new THREE.MeshBasicMaterial({ color: COLORS.enemyCore }),
-      projectileGeometry: new THREE.CapsuleGeometry(0.25, 1.7, 2, 6),
-      haloGeometry: new THREE.RingGeometry(2.2, 2.8, 18),
-      ringGeometry: new THREE.RingGeometry(0.86, 1, 32),
-      chargeNodeGeometry: new THREE.CircleGeometry(0.24, 8),
+      darkMaterial: createMaterial(RENDER_COLORS.darkHull, { emissiveIntensity: RENDERING.material.darkEmissiveIntensity }),
+      healthMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendly }),
+      enemyHealthMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemy }),
+      healthBackMaterial: new THREE.MeshBasicMaterial({
+        color: RENDER_COLORS.healthBack,
+        transparent: true,
+        opacity: RENDERING.material.healthBackOpacity,
+      }),
+      projectileFriendly: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
+      projectileEnemy: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemyCore }),
+      projectileGeometry: new THREE.CapsuleGeometry(...RENDERING.geometry.projectile),
+      haloGeometry: new THREE.RingGeometry(...RENDERING.geometry.halo),
+      ringGeometry: new THREE.RingGeometry(...RENDERING.geometry.impactRing),
+      chargeNodeGeometry: new THREE.CircleGeometry(...RENDERING.geometry.chargeNode),
       pulsePlaneGeometry: new THREE.PlaneGeometry(1, 1),
     };
   }
 
   createEnvironment() {
-    const ambient = new THREE.AmbientLight(0x6aa9c7, 0.72);
-    const key = new THREE.DirectionalLight(0xb9ffff, 2.2);
-    key.position.set(-30, -20, 80);
-    const rim = new THREE.DirectionalLight(0xff647d, 1.2);
-    rim.position.set(30, 60, 35);
+    const ambient = new THREE.AmbientLight(RENDER_COLORS.ambientLight, RENDERING.environment.ambientLightIntensity);
+    const key = new THREE.DirectionalLight(RENDER_COLORS.keyLight, RENDERING.environment.keyLightIntensity);
+    key.position.set(...RENDERING.environment.keyLightPosition);
+    const rim = new THREE.DirectionalLight(RENDER_COLORS.rimLight, RENDERING.environment.rimLightIntensity);
+    rim.position.set(...RENDERING.environment.rimLightPosition);
     this.scene.add(ambient, key, rim);
 
-    const grid = new THREE.GridHelper(420, 42, COLORS.grid, COLORS.grid);
+    const grid = new THREE.GridHelper(
+      RENDERING.environment.gridSize,
+      RENDERING.environment.gridDivisions,
+      RENDER_COLORS.grid,
+      RENDER_COLORS.grid,
+    );
     grid.rotation.x = Math.PI / 2;
-    grid.position.set(0, 0, -2.8);
+    grid.position.set(0, 0, RENDERING.environment.gridZ);
     grid.material.transparent = true;
-    grid.material.opacity = 0.24;
+    grid.material.opacity = RENDERING.environment.gridOpacity;
     this.scene.add(grid);
 
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(ARENA.minX, ARENA.defenseLineY, -0.4),
-      new THREE.Vector3(ARENA.maxX, ARENA.defenseLineY, -0.4),
+      new THREE.Vector3(ARENA.minX, ARENA.defenseLineY, RENDERING.environment.defenseLineZ),
+      new THREE.Vector3(ARENA.maxX, ARENA.defenseLineY, RENDERING.environment.defenseLineZ),
     ]);
     this.defenseLine = new THREE.Line(
       lineGeometry,
-      new THREE.LineBasicMaterial({ color: COLORS.friendly, transparent: true, opacity: 0.42 }),
+      new THREE.LineBasicMaterial({
+        color: RENDER_COLORS.friendly,
+        transparent: true,
+        opacity: RENDERING.environment.defenseLineOpacity,
+      }),
     );
     this.scene.add(this.defenseLine);
 
-    const starCount = 520;
+    const starCount = RENDERING.environment.stars.count;
     const positions = new Float32Array(starCount * 3);
     const sizes = new Float32Array(starCount);
-    let seed = 1907;
+    let seed = RENDERING.environment.stars.seed;
     const random = () => {
-      seed = (seed * 16807) % 2147483647;
-      return (seed - 1) / 2147483646;
+      seed = (seed * RENDERING.environment.stars.multiplier) % RENDERING.environment.stars.modulus;
+      return (seed - 1) / RENDERING.environment.stars.normalizer;
     };
     for (let index = 0; index < starCount; index += 1) {
-      positions[index * 3] = (random() - 0.5) * 280;
-      positions[index * 3 + 1] = (random() - 0.5) * 250;
-      positions[index * 3 + 2] = -4 - random() * 30;
-      sizes[index] = 0.4 + random();
+      positions[index * 3] = (random() - 0.5) * RENDERING.environment.stars.width;
+      positions[index * 3 + 1] = (random() - 0.5) * RENDERING.environment.stars.height;
+      positions[index * 3 + 2] = RENDERING.environment.stars.frontZ - random() * RENDERING.environment.stars.depth;
+      sizes[index] = RENDERING.environment.stars.minimumPointSize + random();
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -181,45 +187,62 @@ export class GameRenderer {
     this.stars = new THREE.Points(
       geometry,
       new THREE.PointsMaterial({
-        color: 0x8ac8df,
-        size: 0.45,
+        color: RENDER_COLORS.stars,
+        size: RENDERING.environment.stars.materialSize,
         transparent: true,
-        opacity: 0.72,
+        opacity: RENDERING.environment.stars.opacity,
         sizeAttenuation: true,
       }),
     );
     this.scene.add(this.stars);
 
     const haze = new THREE.Mesh(
-      new THREE.PlaneGeometry(150, 85),
-      new THREE.MeshBasicMaterial({ color: 0x13234d, transparent: true, opacity: 0.09, depthWrite: false }),
+      new THREE.PlaneGeometry(...RENDERING.environment.hazeSize),
+      new THREE.MeshBasicMaterial({
+        color: RENDER_COLORS.haze,
+        transparent: true,
+        opacity: RENDERING.environment.hazeOpacity,
+        depthWrite: false,
+      }),
     );
-    haze.position.set(-32, 30, -9);
-    haze.rotation.z = -0.18;
+    haze.position.set(...RENDERING.environment.hazePosition);
+    haze.rotation.z = RENDERING.environment.hazeRotation;
     this.scene.add(haze);
   }
 
   createTargetMarker() {
     this.targetMarker = new THREE.Group();
     const material = new THREE.MeshBasicMaterial({
-      color: COLORS.friendly,
+      color: RENDER_COLORS.friendly,
       transparent: true,
-      opacity: 0.9,
+      opacity: RENDERING.targetMarker.opacity,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    const outer = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48, 1, 0, Math.PI * 1.72), material);
-    const inner = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.5, 24), material.clone());
+    const outer = new THREE.Mesh(
+      new THREE.RingGeometry(
+        ...RENDERING.targetMarker.outerRing,
+        1,
+        0,
+        Math.PI * RENDERING.targetMarker.outerArcRatio,
+      ),
+      material,
+    );
+    const inner = new THREE.Mesh(
+      new THREE.RingGeometry(...RENDERING.targetMarker.innerRing),
+      material.clone(),
+    );
+    const { crossOuter, crossInner } = RENDERING.targetMarker;
     const crossGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-7, 0, 0), new THREE.Vector3(-3.4, 0, 0),
-      new THREE.Vector3(7, 0, 0), new THREE.Vector3(3.4, 0, 0),
-      new THREE.Vector3(0, -7, 0), new THREE.Vector3(0, -3.4, 0),
-      new THREE.Vector3(0, 7, 0), new THREE.Vector3(0, 3.4, 0),
+      new THREE.Vector3(-crossOuter, 0, 0), new THREE.Vector3(-crossInner, 0, 0),
+      new THREE.Vector3(crossOuter, 0, 0), new THREE.Vector3(crossInner, 0, 0),
+      new THREE.Vector3(0, -crossOuter, 0), new THREE.Vector3(0, -crossInner, 0),
+      new THREE.Vector3(0, crossOuter, 0), new THREE.Vector3(0, crossInner, 0),
     ]);
     const cross = new THREE.LineSegments(crossGeometry, material.clone());
     this.targetMarker.add(outer, inner, cross);
     outer.userData.isRadiusRing = true;
-    this.targetMarker.position.z = 4;
+    this.targetMarker.position.z = RENDERING.targetMarker.z;
     this.targetMarker.visible = false;
     this.targetMarker.userData.life = 0;
     this.scene.add(this.targetMarker);
@@ -227,11 +250,11 @@ export class GameRenderer {
 
   createProjectilePool() {
     return new ObjectPool({
-      initialSize: 36,
+      initialSize: RENDERING.pools.projectiles,
       create: () => {
         const mesh = new THREE.Mesh(this.shared.projectileGeometry, this.shared.projectileFriendly);
         mesh.visible = false;
-        mesh.renderOrder = 4;
+        mesh.renderOrder = RENDERING.layers.projectileRenderOrder;
         this.scene.add(mesh);
         return mesh;
       },
@@ -244,21 +267,21 @@ export class GameRenderer {
 
   createEffectPool() {
     return new ObjectPool({
-      initialSize: 14,
+      initialSize: RENDERING.pools.impacts,
       create: () => {
         const group = new THREE.Group();
         const material = new THREE.MeshBasicMaterial({
-          color: COLORS.friendly,
+          color: RENDER_COLORS.friendly,
           transparent: true,
           opacity: 1,
           side: THREE.DoubleSide,
           depthWrite: false,
         });
         const ring = new THREE.Mesh(this.shared.ringGeometry, material);
-        const core = new THREE.Mesh(new THREE.CircleGeometry(0.7, 14), material.clone());
+        const core = new THREE.Mesh(new THREE.CircleGeometry(...RENDERING.geometry.impactCore), material.clone());
         group.add(ring, core);
         group.visible = false;
-        group.position.z = 5;
+        group.position.z = RENDERING.layers.effectZ;
         group.userData.materials = [material, core.material];
         this.scene.add(group);
         return group;
@@ -272,20 +295,24 @@ export class GameRenderer {
 
   createGunPulsePool() {
     return new ObjectPool({
-      initialSize: 12,
+      initialSize: RENDERING.pools.gunPulses,
       create: () => {
         const group = new THREE.Group();
-        const materials = [
-          new THREE.MeshBasicMaterial({ color: 0xffc76c, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-          new THREE.MeshBasicMaterial({ color: 0xffe2a1, transparent: true, opacity: 0.76, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-        ];
+        const materials = RENDER_COLORS.gunPulse.map((color, index) => new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: RENDERING.gunPulse.initialMaterialOpacities[index],
+          blending: THREE.AdditiveBlending,
+          depthTest: false,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }));
         const wake = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[0]);
         const tracer = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[1]);
         const packet = new THREE.Mesh(this.shared.pulsePlaneGeometry, materials[2]);
         for (const visual of [wake, tracer, packet]) {
           visual.frustumCulled = false;
-          visual.renderOrder = 8;
+          visual.renderOrder = RENDERING.layers.gunPulseRenderOrder;
         }
         group.add(wake, tracer, packet);
         group.userData = { materials, wake, tracer, packet, length: 1 };
@@ -303,11 +330,11 @@ export class GameRenderer {
 
   createDamageNumberPool() {
     return new ObjectPool({
-      initialSize: 24,
+      initialSize: RENDERING.pools.damageNumbers,
       create: () => {
         const canvas = document.createElement('canvas');
-        canvas.width = 384;
-        canvas.height = 128;
+        canvas.width = RENDERING.damageNumber.canvasWidth;
+        canvas.height = RENDERING.damageNumber.canvasHeight;
         const context = canvas.getContext('2d');
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
@@ -321,7 +348,7 @@ export class GameRenderer {
         });
         const sprite = new THREE.Sprite(material);
         sprite.visible = false;
-        sprite.renderOrder = 12;
+        sprite.renderOrder = RENDERING.layers.damageNumberRenderOrder;
         sprite.userData = { canvas, context, texture };
         this.scene.add(sprite);
         return sprite;
@@ -338,46 +365,75 @@ export class GameRenderer {
     const group = new THREE.Group();
     const friendly = entity.faction === 'friendly';
     const command = entity.role === 'command';
-    const scale = (command ? 1.28 : 1) * (entity.scale ?? 1);
+    const scale = (command ? RENDERING.ships.commandScale : 1) * (entity.scale ?? 1);
 
     let turret = null;
     if (friendly) {
-      const friendlyShape = entity.role === 'lancer'
-        ? [[0, 4.4], [-1, 0.1], [-1.45, -2.8], [0, -1.6], [1.45, -2.8], [1, 0.1]]
-        : entity.role === 'guardian'
-          ? [[0, 3.1], [-2.5, 1.1], [-3, -2.2], [0, -1.55], [3, -2.2], [2.5, 1.1]]
-          : [[0, 3.8], [-1.5, 0.4], [-2.5, -2.2], [0, -1.3], [2.5, -2.2], [1.5, 0.4]];
+      const friendlyShape = RENDERING.ships.shapes[entity.role] ?? RENDERING.ships.shapes.escort;
       const hull = new THREE.Mesh(
         new THREE.ExtrudeGeometry(
           makeShape(friendlyShape),
-          { depth: 0.75, bevelEnabled: true, bevelSize: 0.2, bevelThickness: 0.22, bevelSegments: 1 },
+          { ...RENDERING.ships.friendlyHullExtrusion, bevelEnabled: true },
         ),
         command ? this.shared.commandMaterial : this.shared.friendlyMaterial,
       );
-      hull.position.z = -0.35;
+      hull.position.z = RENDERING.ships.hullZ;
       group.add(hull);
 
-      const wingWidth = entity.role === 'lancer' ? 3.8 : entity.role === 'guardian' ? 7 : 5.8;
-      const wings = new THREE.Mesh(new THREE.BoxGeometry(wingWidth, 0.7, 0.45), this.shared.darkMaterial);
-      wings.position.set(0, -0.65, 0.3);
+      const wingWidth = RENDERING.ships.wingWidths[entity.role] ?? RENDERING.ships.wingWidths.escort;
+      const wings = new THREE.Mesh(
+        new THREE.BoxGeometry(wingWidth, ...RENDERING.ships.wingSize),
+        this.shared.darkMaterial,
+      );
+      wings.position.set(...RENDERING.ships.wingPosition);
       group.add(wings);
 
-      const core = new THREE.Mesh(new THREE.OctahedronGeometry(command ? 0.7 : 0.48, 0), this.shared.friendlyCoreMaterial);
-      core.position.set(0, 0.55, 0.9);
+      const core = new THREE.Mesh(
+        new THREE.OctahedronGeometry(
+          command ? RENDERING.ships.commandCoreRadius : RENDERING.ships.friendlyCoreRadius,
+          0,
+        ),
+        this.shared.friendlyCoreMaterial,
+      );
+      core.position.set(...RENDERING.ships.friendlyCorePosition);
       group.add(core);
 
       if (command) {
         turret = new THREE.Group();
-        const turretBaseMaterial = new THREE.MeshBasicMaterial({ color: COLORS.command, transparent: true, opacity: 0.88 });
+        const turretBaseMaterial = new THREE.MeshBasicMaterial({
+          color: RENDER_COLORS.command,
+          transparent: true,
+          opacity: RENDERING.ships.turret.opacity,
+        });
         turretBaseMaterial.userData.disposeWithShip = true;
-        const turretBase = new THREE.Mesh(new THREE.CircleGeometry(1.05, 12), turretBaseMaterial);
-        turretBase.position.z = 1.18;
-        const barrelMaterial = new THREE.MeshBasicMaterial({ color: 0xffe5ad });
+        const turretBase = new THREE.Mesh(
+          new THREE.CircleGeometry(
+            RENDERING.ships.turret.baseRadius,
+            RENDERING.ships.turret.baseSegments,
+          ),
+          turretBaseMaterial,
+        );
+        turretBase.position.z = RENDERING.ships.turret.baseZ;
+        const barrelMaterial = new THREE.MeshBasicMaterial({ color: RENDER_COLORS.commandBarrel });
         barrelMaterial.userData.disposeWithShip = true;
-        const leftBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.1, 0.42), barrelMaterial);
-        const rightBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.1, 0.42), barrelMaterial);
-        leftBarrel.position.set(-0.48, 1.75, 1.24);
-        rightBarrel.position.set(0.48, 1.75, 1.24);
+        const leftBarrel = new THREE.Mesh(
+          new THREE.BoxGeometry(...RENDERING.ships.turret.barrelSize),
+          barrelMaterial,
+        );
+        const rightBarrel = new THREE.Mesh(
+          new THREE.BoxGeometry(...RENDERING.ships.turret.barrelSize),
+          barrelMaterial,
+        );
+        leftBarrel.position.set(
+          -RENDERING.ships.turret.barrelX,
+          RENDERING.ships.turret.barrelY,
+          RENDERING.ships.turret.barrelZ,
+        );
+        rightBarrel.position.set(
+          RENDERING.ships.turret.barrelX,
+          RENDERING.ships.turret.barrelY,
+          RENDERING.ships.turret.barrelZ,
+        );
         turret.add(turretBase, leftBarrel, rightBarrel);
         turret.userData.barrels = [leftBarrel, rightBarrel];
         turret.userData.recoil = 0;
@@ -385,32 +441,32 @@ export class GameRenderer {
       }
     } else {
       const enemyShape = entity.boss
-        ? [[0, -4], [-3.8, -2.4], [-5.2, 0.3], [-2.8, 3.4], [0, 2], [2.8, 3.4], [5.2, 0.3], [3.8, -2.4]]
-        : entity.type === 'skirmisher'
-          ? [[0, -4], [-1.4, 0], [-0.8, 2.8], [0, 1.5], [0.8, 2.8], [1.4, 0]]
-          : entity.type === 'bulwark'
-            ? [[0, -2.8], [-3.4, -1.2], [-3, 2.2], [0, 1.35], [3, 2.2], [3.4, -1.2]]
-            : entity.type === 'artillery'
-              ? [[0, -3.1], [-2.8, -0.4], [-2.4, 3], [-0.8, 1.8], [0.8, 1.8], [2.4, 3], [2.8, -0.4]]
-              : [[0, -3.2], [-2.5, -0.2], [-1.1, 2.4], [0, 1.35], [1.1, 2.4], [2.5, -0.2]];
+        ? RENDERING.ships.shapes.boss
+        : RENDERING.ships.shapes[entity.type] ?? RENDERING.ships.shapes.raider;
       const hull = new THREE.Mesh(
         new THREE.ExtrudeGeometry(
           makeShape(enemyShape),
-          { depth: 0.7, bevelEnabled: true, bevelSize: 0.18, bevelThickness: 0.2, bevelSegments: 1 },
+          { ...RENDERING.ships.enemyHullExtrusion, bevelEnabled: true },
         ),
         entity.boss
           ? this.shared.bossMaterial
           : entity.elite ? this.shared.eliteMaterial : this.shared.enemyMaterial,
       );
-      hull.position.z = -0.35;
+      hull.position.z = RENDERING.ships.hullZ;
       group.add(hull);
-      const core = new THREE.Mesh(new THREE.TetrahedronGeometry(0.65, 0), this.shared.enemyCoreMaterial);
-      core.position.set(0, -0.15, 0.85);
+      const core = new THREE.Mesh(
+        new THREE.TetrahedronGeometry(RENDERING.ships.enemyCoreRadius, 0),
+        this.shared.enemyCoreMaterial,
+      );
+      core.position.set(...RENDERING.ships.enemyCorePosition);
       core.rotation.z = Math.PI / 4;
       group.add(core);
       if (entity.boss) {
-        const bridge = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.75, 0.55), this.shared.darkMaterial);
-        bridge.position.set(0, 0.15, 0.25);
+        const bridge = new THREE.Mesh(
+          new THREE.BoxGeometry(...RENDERING.ships.bossBridgeSize),
+          this.shared.darkMaterial,
+        );
+        bridge.position.set(...RENDERING.ships.bossBridgePosition);
         group.add(bridge);
       }
     }
@@ -421,15 +477,23 @@ export class GameRenderer {
         ? this.shared.friendlyHaloMaterial
         : entity.boss ? this.shared.bossHaloMaterial : this.shared.enemyHaloMaterial,
     );
-    halo.position.z = -0.2;
-    halo.scale.setScalar(entity.boss ? 2.2 : command ? 1.45 : entity.elite ? 1.32 : 1);
+    halo.position.z = RENDERING.ships.haloZ;
+    halo.scale.setScalar(
+      entity.boss
+        ? RENDERING.ships.haloScales.boss
+        : command
+          ? RENDERING.ships.haloScales.command
+          : entity.elite ? RENDERING.ships.haloScales.elite : RENDERING.ships.haloScales.standard,
+    );
     group.add(halo);
 
     let shieldRing = null;
     if (friendly) {
       shieldRing = new THREE.Mesh(this.shared.haloGeometry, this.shared.shieldMaterial);
-      shieldRing.position.z = 0.15;
-      shieldRing.scale.setScalar(command ? 1.75 : 1.28);
+      shieldRing.position.z = RENDERING.ships.shieldZ;
+      shieldRing.scale.setScalar(
+        command ? RENDERING.ships.shieldScales.command : RENDERING.ships.shieldScales.standard,
+      );
       shieldRing.visible = entity.maxShield > 0;
       group.add(shieldRing);
     }
@@ -438,32 +502,43 @@ export class GameRenderer {
     let chargeGroup = null;
     if (command) {
       chargeGroup = new THREE.Group();
-      const nodeCount = 12;
+      const nodeCount = RENDERING.ships.chargeNodeCount;
       for (let index = 0; index < nodeCount; index += 1) {
         const angle = (index / nodeCount) * Math.PI * 2 + Math.PI / 2;
         const material = new THREE.MeshBasicMaterial({
-          color: COLORS.friendly,
+          color: RENDER_COLORS.friendly,
           transparent: true,
-          opacity: 0.14,
+          opacity: RENDERING.ships.chargeNodeOpacity,
           depthWrite: false,
           blending: THREE.AdditiveBlending,
         });
         material.userData.disposeWithShip = true;
         const node = new THREE.Mesh(this.shared.chargeNodeGeometry, material);
-        node.position.set(Math.cos(angle) * 4.05, Math.sin(angle) * 4.05, 1.15);
+        node.position.set(
+          Math.cos(angle) * RENDERING.ships.chargeNodeRadius,
+          Math.sin(angle) * RENDERING.ships.chargeNodeRadius,
+          RENDERING.ships.chargeNodeZ,
+        );
         chargeGroup.add(node);
       }
       group.add(chargeGroup);
     } else {
       healthGroup = new THREE.Group();
-      const healthBack = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.34), this.shared.healthBackMaterial);
+      const healthBack = new THREE.Mesh(
+        new THREE.PlaneGeometry(...RENDERING.ships.healthBackSize),
+        this.shared.healthBackMaterial,
+      );
       const healthFill = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.2, 0.2),
+        new THREE.PlaneGeometry(...RENDERING.ships.healthFillSize),
         friendly ? this.shared.healthMaterial : this.shared.enemyHealthMaterial,
       );
-      healthFill.position.z = 0.02;
+      healthFill.position.z = RENDERING.ships.healthFillZ;
       healthGroup.add(healthBack, healthFill);
-      healthGroup.position.set(0, friendly ? -3.6 : 3.4, 1.4);
+      healthGroup.position.set(
+        0,
+        friendly ? RENDERING.ships.healthY.friendly : RENDERING.ships.healthY.enemy,
+        RENDERING.ships.healthZ,
+      );
       healthGroup.userData.fill = healthFill;
       group.add(healthGroup);
     }
@@ -488,14 +563,19 @@ export class GameRenderer {
     this.updateTargetMarker(deltaSeconds);
 
     if (this.stars) {
-      this.stars.position.y = -((this.clockTime * 0.24) % 16);
-      this.stars.material.opacity = 0.65 + Math.sin(this.clockTime * 0.7) * 0.07;
+      this.stars.position.y = -((this.clockTime * RENDERING.animation.starScrollSpeed)
+        % RENDERING.animation.starScrollSpan);
+      this.stars.material.opacity = RENDERING.animation.starBaseOpacity
+        + Math.sin(this.clockTime * RENDERING.animation.starPulseSpeed)
+        * RENDERING.animation.starPulseOpacity;
     }
     if (this.defenseLine) {
-      this.defenseLine.material.opacity = 0.32 + Math.sin(this.clockTime * 2.3) * 0.1;
+      this.defenseLine.material.opacity = RENDERING.animation.defenseLineBaseOpacity
+        + Math.sin(this.clockTime * RENDERING.animation.defenseLinePulseSpeed)
+        * RENDERING.animation.defenseLinePulseOpacity;
     }
 
-    this.shake = Math.max(0, this.shake - deltaSeconds * 2.7);
+    this.shake = Math.max(0, this.shake - deltaSeconds * RENDERING.animation.shakeDecay);
     const shakeAmount = this.shake * this.shake;
     this.camera.position.x = this.baseCameraPosition.x
       + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
@@ -514,52 +594,81 @@ export class GameRenderer {
         this.entityMeshes.set(entity.id, group);
       }
       group.position.set(entity.x, entity.y, 0);
-      const healthRatio = Math.max(0.001, entity.health / entity.maxHealth);
+      const healthRatio = Math.max(RENDERING.ships.minimumHealthRatio, entity.health / entity.maxHealth);
       if (group.userData.health) {
         const healthFill = group.userData.health.userData.fill;
         healthFill.scale.x = healthRatio;
-        healthFill.position.x = -2.1 * (1 - healthRatio);
-        group.userData.health.visible = healthRatio < 0.995;
+        healthFill.position.x = -RENDERING.ships.healthFillHalfWidth * (1 - healthRatio);
+        group.userData.health.visible = healthRatio < RENDERING.ships.healthVisibilityThreshold;
       }
       if (group.userData.chargeGroup) {
         const litNodes = Math.round(Math.max(0, Math.min(1, energyRatio)) * group.userData.chargeGroup.children.length);
         group.userData.chargeGroup.children.forEach((node, index) => {
           const charged = index < litNodes;
-          node.material.color.setHex(flagshipGun.firing ? COLORS.command : COLORS.friendly);
-          node.material.opacity = charged ? 0.92 : 0.12;
-          node.scale.setScalar(charged ? 1.1 : 0.82);
+          node.material.color.setHex(flagshipGun.firing ? RENDER_COLORS.command : RENDER_COLORS.friendly);
+          node.material.opacity = charged
+            ? RENDERING.entityAnimation.chargedNodeOpacity
+            : RENDERING.entityAnimation.emptyNodeOpacity;
+          node.scale.setScalar(
+            charged
+              ? RENDERING.entityAnimation.chargedNodeScale
+              : RENDERING.entityAnimation.emptyNodeScale,
+          );
         });
-        group.userData.chargeGroup.rotation.z -= (flagshipGun.firing ? 0.026 : 0.004 + energyRatio * 0.004);
-        this.shared.commandMaterial.emissiveIntensity = 0.58 + energyRatio * 0.42 + (flagshipGun.firing ? 0.28 : 0);
+        group.userData.chargeGroup.rotation.z -= flagshipGun.firing
+          ? RENDERING.entityAnimation.firingChargeRotation
+          : RENDERING.entityAnimation.idleChargeRotation
+            + energyRatio * RENDERING.entityAnimation.energyChargeRotation;
+        this.shared.commandMaterial.emissiveIntensity = RENDERING.entityAnimation.commandEmissiveBase
+          + energyRatio * RENDERING.entityAnimation.commandEmissiveEnergy
+          + (flagshipGun.firing ? RENDERING.entityAnimation.commandEmissiveFiring : 0);
       }
       if (group.userData.turret) {
         const aim = flagshipGun.aim ?? { x: entity.x, y: entity.y + 1 };
         group.userData.turret.rotation.z = Math.atan2(aim.y - entity.y, aim.x - entity.x) - Math.PI / 2;
-        group.userData.turret.userData.recoil = Math.max(0, group.userData.turret.userData.recoil - deltaSeconds * 8);
+        group.userData.turret.userData.recoil = Math.max(
+          0,
+          group.userData.turret.userData.recoil
+            - deltaSeconds * RENDERING.ships.turret.recoilRecovery,
+        );
         const recoil = group.userData.turret.userData.recoil;
         group.userData.turret.userData.barrels.forEach((barrel, index) => {
           const activeBarrel = (flagshipGun.pulseIndex ?? 0) % 2 === index;
-          barrel.position.y = 1.75 - (activeBarrel ? recoil * 0.7 : 0);
+          barrel.position.y = RENDERING.ships.turret.barrelY
+            - (activeBarrel ? recoil * RENDERING.ships.turret.recoilDistance : 0);
         });
       }
-      group.userData.halo.rotation.z += 0.012;
+      group.userData.halo.rotation.z += RENDERING.entityAnimation.haloRotation;
       if (entity.boss) {
         const exposed = entity.exposedRemaining > 0;
-        group.userData.halo.material.color.setHex(exposed ? COLORS.friendly : COLORS.boss);
-        group.userData.halo.material.opacity = exposed ? 0.58 : 0.28 + Math.sin(this.clockTime * 3) * 0.09;
+        group.userData.halo.material.color.setHex(exposed ? RENDER_COLORS.friendly : RENDER_COLORS.boss);
+        group.userData.halo.material.opacity = exposed
+          ? RENDERING.entityAnimation.bossExposedOpacity
+          : RENDERING.entityAnimation.bossBaseOpacity
+            + Math.sin(this.clockTime * RENDERING.entityAnimation.bossPulseSpeed)
+            * RENDERING.entityAnimation.bossPulseOpacity;
       }
       if (group.userData.shieldRing) {
         const shieldRatio = entity.maxShield > 0 ? entity.shield / entity.maxShield : 0;
         group.userData.shieldRing.visible = shieldRatio > 0;
-        group.userData.shieldRing.rotation.z -= 0.018;
+        group.userData.shieldRing.rotation.z += RENDERING.entityAnimation.shieldRotation;
         group.userData.shieldRing.scale.setScalar(
-          (entity.role === 'command' ? 1.75 : 1.28) * (0.9 + shieldRatio * 0.1),
+          (entity.role === 'command'
+            ? RENDERING.ships.shieldScales.command
+            : RENDERING.ships.shieldScales.standard)
+          * (RENDERING.entityAnimation.shieldMinimumScale
+            + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale),
         );
       }
-      const readyPulse = entity.role === 'command' && energyRatio >= 0.999
-        ? Math.sin(this.clockTime * 5) * 0.035
+      const readyPulse = entity.role === 'command'
+        && energyRatio >= RENDERING.entityAnimation.readyEnergyThreshold
+        ? Math.sin(this.clockTime * RENDERING.entityAnimation.readyPulseSpeed)
+          * RENDERING.entityAnimation.readyPulseScale
         : 0;
-      const pulse = 1 + Math.sin(this.clockTime * 3 + (entity.slot ?? 0)) * 0.025 + readyPulse;
+      const pulse = 1
+        + Math.sin(this.clockTime * RENDERING.entityAnimation.idlePulseSpeed + (entity.slot ?? 0))
+        * RENDERING.entityAnimation.idlePulseScale
+        + readyPulse;
       group.scale.setScalar(group.userData.baseScale * pulse);
     }
 
@@ -584,9 +693,11 @@ export class GameRenderer {
           : this.shared.projectileEnemy;
         this.projectileMeshes.set(projectile.id, mesh);
       }
-      mesh.position.set(projectile.x, projectile.y, 2.2);
+      mesh.position.set(projectile.x, projectile.y, RENDERING.layers.projectileZ);
       mesh.rotation.z = Math.atan2(projectile.vy, projectile.vx) - Math.PI / 2;
-      mesh.scale.setScalar(projectile.faction === 'friendly' ? 1 : 0.85);
+      mesh.scale.setScalar(
+        projectile.faction === 'friendly' ? 1 : RENDERING.projectile.enemyScale,
+      );
     }
 
     for (const [id, mesh] of this.projectileMeshes) {
@@ -599,43 +710,71 @@ export class GameRenderer {
   handleEvents(events) {
     for (const event of events) {
       if (event.type === 'impact') {
-        this.spawnImpact(event.x, event.y, event.faction === 'friendly' ? COLORS.friendly : COLORS.enemy, event.heavy ? 2 : 1);
+        this.spawnImpact(
+          event.x,
+          event.y,
+          event.faction === 'friendly' ? RENDER_COLORS.friendly : RENDER_COLORS.enemy,
+          event.heavy ? RENDERING.eventEffects.impactHeavy : RENDERING.eventEffects.impactNormal,
+        );
       } else if (event.type === 'destroyed') {
-        this.spawnImpact(event.x, event.y, event.faction === 'friendly' ? COLORS.friendly : COLORS.enemy, 3.2);
-        this.shake = Math.max(this.shake, event.role === 'command' ? 3.5 : 1.6);
+        this.spawnImpact(
+          event.x,
+          event.y,
+          event.faction === 'friendly' ? RENDER_COLORS.friendly : RENDER_COLORS.enemy,
+          RENDERING.eventEffects.destroyedImpact,
+        );
+        this.shake = Math.max(
+          this.shake,
+          event.role === 'command'
+            ? RENDERING.eventEffects.commandDestroyedShake
+            : RENDERING.eventEffects.destroyedShake,
+        );
       } else if (event.type === 'flagshipGunStarted') {
-        this.showTarget(event.x, event.y, true, 2.1);
-        this.shake = Math.max(this.shake, 0.85);
+        this.showTarget(event.x, event.y, true, RENDERING.eventEffects.gunStartedTargetRadius);
+        this.shake = Math.max(this.shake, RENDERING.eventEffects.gunStartedShake);
       } else if (event.type === 'flagshipGunPulse') {
         this.spawnFlagshipGunPulse(event);
-        this.showTarget(event.aim.x, event.aim.y, true, 1.4);
-        this.shake = Math.max(this.shake, event.critical ? 1.65 : event.hitId ? 0.82 : 0.42);
+        this.showTarget(event.aim.x, event.aim.y, true, RENDERING.eventEffects.gunPulseTargetRadius);
+        this.shake = Math.max(
+          this.shake,
+          event.critical
+            ? RENDERING.eventEffects.gunCriticalShake
+            : event.hitId ? RENDERING.eventEffects.gunHitShake : RENDERING.eventEffects.gunMissShake,
+        );
       } else if (event.type === 'damaged') {
         this.spawnDamageNumber(event);
       } else if (event.type === 'flagshipGunAimChanged' && Number.isFinite(event.x)) {
-        this.showTarget(event.x, event.y, true, 1.6);
+        this.showTarget(event.x, event.y, true, RENDERING.eventEffects.aimTargetRadius);
       } else if (event.type === 'flagshipGunRejected') {
         this.showTarget(event.x, event.y, false);
       } else if (event.type === 'flagshipGunReady') {
-        this.spawnImpact(event.x, event.y, COLORS.command, 1.9);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.command, RENDERING.eventEffects.gunReadyImpact);
       } else if (event.type === 'breach') {
-        this.spawnImpact(event.x, event.y, COLORS.enemy, 2.5);
-        this.shake = Math.max(this.shake, 2.2);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.enemy, RENDERING.eventEffects.breachImpact);
+        this.shake = Math.max(this.shake, RENDERING.eventEffects.breachShake);
       } else if (event.type === 'formationChanged') {
         this.spawnFormationTrails(event.paths);
       } else if (event.type === 'shieldImpact') {
-        this.spawnImpact(event.x, event.y, 0x72a7ff, 1.35);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.shield, RENDERING.eventEffects.shieldImpact);
         this.spawnDamageNumber({ ...event, amount: event.absorbed, faction: 'friendly', shield: true });
       } else if (event.type === 'friendlyJoined') {
-        this.spawnImpact(event.x, event.y, COLORS.command, 1.8);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.command, RENDERING.eventEffects.friendlyJoinedImpact);
       } else if (event.type === 'areaImpact') {
-        this.spawnImpact(event.x, event.y, 0xff8b5f, Math.max(2, event.radius / 4));
-        this.shake = Math.max(this.shake, 2.35);
+        this.spawnImpact(
+          event.x,
+          event.y,
+          RENDER_COLORS.areaImpact,
+          Math.max(
+            RENDERING.eventEffects.minimumAreaImpact,
+            event.radius / RENDERING.eventEffects.areaImpactRadiusDivisor,
+          ),
+        );
+        this.shake = Math.max(this.shake, RENDERING.eventEffects.areaImpactShake);
       } else if (event.type === 'bossExposed') {
-        this.spawnImpact(event.x, event.y, COLORS.friendly, 3.8);
-        this.shake = Math.max(this.shake, 2.7);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.friendly, RENDERING.eventEffects.bossExposedImpact);
+        this.shake = Math.max(this.shake, RENDERING.eventEffects.bossExposedShake);
       } else if (event.type === 'bossBarrierImpact') {
-        this.spawnImpact(event.x, event.y, COLORS.boss, 0.72);
+        this.spawnImpact(event.x, event.y, RENDER_COLORS.boss, RENDERING.eventEffects.bossBarrierImpact);
       }
     }
   }
@@ -643,11 +782,12 @@ export class GameRenderer {
   spawnImpact(x, y, color, intensity = 1) {
     const group = this.effectPool.acquire();
     group.visible = true;
-    group.position.set(x, y, 4);
-    group.scale.setScalar(0.5 * intensity);
-    group.userData.life = 0.42 + intensity * 0.06;
+    group.position.set(x, y, RENDERING.impact.z);
+    group.scale.setScalar(RENDERING.impact.initialScale * intensity);
+    group.userData.life = RENDERING.impact.baseLife + intensity * RENDERING.impact.lifePerIntensity;
     group.userData.maxLife = group.userData.life;
-    group.userData.growth = 8 + intensity * 2;
+    group.userData.growth = RENDERING.impact.baseGrowth
+      + intensity * RENDERING.impact.growthPerIntensity;
     for (const material of group.userData.materials) {
       material.color.setHex(color);
       material.opacity = 1;
@@ -659,39 +799,69 @@ export class GameRenderer {
     if (!Number.isFinite(amount) || amount <= 0) return;
     const sprite = this.damageNumberPool.acquire();
     const { canvas, context, texture } = sprite.userData;
-    const label = `${formatDamageAmount(amount)}`;
-    const fillColor = critical ? '#fff0a6' : shield ? '#91b8ff' : faction === 'enemy' ? '#dffffd' : '#ff8b9c';
-    const strokeColor = critical ? '#8b3a00' : '#07111f';
+    const label = formatDamageAmount(amount);
+    const fillColor = critical
+      ? RENDER_COLORS.damageText.critical
+      : shield
+        ? RENDER_COLORS.damageText.shield
+        : faction === 'enemy' ? RENDER_COLORS.damageText.enemy : RENDER_COLORS.damageText.friendly;
+    const strokeColor = critical
+      ? RENDER_COLORS.damageText.criticalStroke
+      : RENDER_COLORS.damageText.stroke;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.save();
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.font = `${critical ? 900 : 750} ${critical ? 47 : 54}px system-ui, sans-serif`;
+    context.font = `${critical
+      ? RENDERING.damageNumber.criticalFontWeight
+      : RENDERING.damageNumber.fontWeight} ${critical
+      ? RENDERING.damageNumber.criticalFontSize
+      : RENDERING.damageNumber.fontSize}px ${RENDERING.damageNumber.fontFamily}`;
     context.lineJoin = 'round';
-    context.lineWidth = critical ? 11 : 9;
+    context.lineWidth = critical
+      ? RENDERING.damageNumber.criticalLineWidth
+      : RENDERING.damageNumber.lineWidth;
     context.strokeStyle = strokeColor;
     context.fillStyle = fillColor;
     context.shadowColor = fillColor;
-    context.shadowBlur = critical ? 22 : 12;
+    context.shadowBlur = critical
+      ? RENDERING.damageNumber.criticalShadowBlur
+      : RENDERING.damageNumber.shadowBlur;
     context.strokeText(label, canvas.width / 2, canvas.height / 2);
     context.fillText(label, canvas.width / 2, canvas.height / 2);
     context.restore();
     texture.needsUpdate = true;
 
     this.damageNumberSequence = (this.damageNumberSequence ?? 0) + 1;
-    const lane = (this.damageNumberSequence % 3) - 1;
-    const baseWidth = critical ? 33 : 24;
-    const baseHeight = critical ? 11 : 8;
+    const lane = RENDERING.damageNumber.laneOffsets[
+      this.damageNumberSequence % RENDERING.damageNumber.laneOffsets.length
+    ];
+    const baseWidth = critical
+      ? RENDERING.damageNumber.criticalWidth
+      : RENDERING.damageNumber.width;
+    const baseHeight = critical
+      ? RENDERING.damageNumber.criticalHeight
+      : RENDERING.damageNumber.height;
     sprite.visible = true;
-    sprite.position.set(x + lane * 0.65, y + (critical ? 4.2 : 3.4), 8);
-    sprite.scale.set(baseWidth * 0.72, baseHeight * 0.72, 1);
+    sprite.position.set(
+      x + lane * RENDERING.damageNumber.laneSpacing,
+      y + (critical ? RENDERING.damageNumber.criticalYOffset : RENDERING.damageNumber.yOffset),
+      RENDERING.layers.damageNumberZ,
+    );
+    sprite.scale.set(
+      baseWidth * RENDERING.damageNumber.initialScale,
+      baseHeight * RENDERING.damageNumber.initialScale,
+      1,
+    );
     this.effects.push({
       type: 'damageNumber',
       object: sprite,
-      life: critical ? 1.05 : 0.82,
-      maxLife: critical ? 1.05 : 0.82,
-      riseSpeed: critical ? 7.6 : 6.1,
-      drift: lane * 0.7,
+      life: critical ? RENDERING.damageNumber.criticalLife : RENDERING.damageNumber.life,
+      maxLife: critical ? RENDERING.damageNumber.criticalLife : RENDERING.damageNumber.life,
+      riseSpeed: critical
+        ? RENDERING.damageNumber.criticalRiseSpeed
+        : RENDERING.damageNumber.riseSpeed,
+      drift: lane * RENDERING.damageNumber.driftSpeed,
       baseWidth,
       baseHeight,
       critical,
@@ -701,74 +871,109 @@ export class GameRenderer {
   spawnFlagshipGunPulse(event) {
     const dx = event.x - event.source.x;
     const dy = event.y - event.source.y;
-    const length = Math.max(0.1, Math.hypot(dx, dy));
+    const length = Math.max(RENDERING.gunPulse.minimumLength, Math.hypot(dx, dy));
     const group = this.gunPulsePool.acquire();
     group.visible = true;
     const energyStrength = Math.sqrt(Math.max(0, Math.min(1, event.energyFraction ?? 1)));
-    const power = Math.max(0.28, Math.min(1.8, (event.damageMultiplier ?? 1) * energyStrength));
-    const widthScale = (0.74 + power * 0.3) * (event.critical ? 1.18 : 1);
+    const power = Math.max(
+      RENDERING.gunPulse.minimumPower,
+      Math.min(RENDERING.gunPulse.maximumPower, (event.damageMultiplier ?? 1) * energyStrength),
+    );
+    const widthScale = (RENDERING.gunPulse.baseWidthScale + power * RENDERING.gunPulse.powerWidthScale)
+      * (event.critical ? RENDERING.gunPulse.criticalWidthScale : 1);
     const colors = event.critical
-      ? [0xffd36a, 0xffffc4, 0xffffff]
-      : [0xffc76c, 0xffe2a1, 0xffffff];
+      ? RENDER_COLORS.criticalGunPulse
+      : RENDER_COLORS.gunPulse;
     group.userData.materials.forEach((material, index) => material.color.setHex(colors[index]));
-    const lateralOffset = event.pulseIndex % 2 === 0 ? 0.42 : -0.42;
+    const lateralOffset = event.pulseIndex % 2 === 0
+      ? RENDERING.gunPulse.barrelOffset
+      : -RENDERING.gunPulse.barrelOffset;
     const offsetX = (-dy / length) * lateralOffset;
     const offsetY = (dx / length) * lateralOffset;
     group.position.set(
       (event.source.x + event.x) / 2 + offsetX,
       (event.source.y + event.y) / 2 + offsetY,
-      4.2,
+      RENDERING.layers.gunPulseZ,
     );
     group.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
     group.userData.length = length;
-    group.userData.trailLength = Math.min(16, length * 0.24);
-    group.userData.wake.scale.set(1.8 * widthScale, length, 1);
-    group.userData.tracer.scale.set(1.05 * widthScale, group.userData.trailLength, 1);
-    group.userData.packet.scale.set(0.62 * widthScale, Math.min(4.6, length * 0.09), 1);
+    group.userData.trailLength = Math.min(
+      RENDERING.gunPulse.maximumTrailLength,
+      length * RENDERING.gunPulse.trailLengthRatio,
+    );
+    group.userData.wake.scale.set(RENDERING.gunPulse.wakeWidth * widthScale, length, 1);
+    group.userData.tracer.scale.set(
+      RENDERING.gunPulse.tracerWidth * widthScale,
+      group.userData.trailLength,
+      1,
+    );
+    group.userData.packet.scale.set(
+      RENDERING.gunPulse.packetWidth * widthScale,
+      Math.min(RENDERING.gunPulse.maximumPacketLength, length * RENDERING.gunPulse.packetLengthRatio),
+      1,
+    );
     group.userData.tracer.position.y = -length / 2;
     group.userData.packet.position.y = -length / 2;
     group.userData.baseOpacities = [
-      Math.min(0.12, 0.045 + power * 0.03),
-      Math.min(0.92, 0.54 + power * 0.2),
-      Math.min(1, 0.72 + power * 0.24),
+      Math.min(
+        RENDERING.gunPulse.wakeOpacityMaximum,
+        RENDERING.gunPulse.wakeOpacityBase + power * RENDERING.gunPulse.wakeOpacityPower,
+      ),
+      Math.min(
+        RENDERING.gunPulse.tracerOpacityMaximum,
+        RENDERING.gunPulse.tracerOpacityBase + power * RENDERING.gunPulse.tracerOpacityPower,
+      ),
+      Math.min(1, RENDERING.gunPulse.packetOpacityBase + power * RENDERING.gunPulse.packetOpacityPower),
     ];
     group.userData.materials.forEach((material, index) => {
       material.opacity = group.userData.baseOpacities[index];
     });
-    this.effects.push({ type: 'gunPulse', object: group, life: 0.26, maxLife: 0.26 });
+    this.effects.push({
+      type: 'gunPulse',
+      object: group,
+      life: RENDERING.gunPulse.life,
+      maxLife: RENDERING.gunPulse.life,
+    });
     const command = [...this.entityMeshes.values()].find((mesh) => mesh.userData.entity?.role === 'command');
     if (command?.userData.turret) command.userData.turret.userData.recoil = 1;
-    this.spawnImpact(event.source.x, event.source.y, COLORS.command, 0.5);
+    this.spawnImpact(event.source.x, event.source.y, RENDER_COLORS.command, RENDERING.gunPulse.sourceImpact);
     if (event.hitId) {
       this.spawnImpact(
         event.x,
         event.y,
-        event.critical ? 0xffffc4 : COLORS.friendly,
-        event.critical ? 1.5 + power * 0.35 : 0.65 + power * 0.2,
+        event.critical ? RENDER_COLORS.criticalImpact : RENDER_COLORS.friendly,
+        event.critical
+          ? RENDERING.gunPulse.criticalImpactBase + power * RENDERING.gunPulse.criticalImpactPower
+          : RENDERING.gunPulse.hitImpactBase + power * RENDERING.gunPulse.hitImpactPower,
       );
     }
   }
 
   spawnFormationTrails(paths) {
     const material = new THREE.LineDashedMaterial({
-      color: COLORS.friendly,
+      color: RENDER_COLORS.friendly,
       transparent: true,
-      opacity: 0.42,
-      dashSize: 1.2,
-      gapSize: 0.9,
+      opacity: RENDERING.formationTrail.opacity,
+      dashSize: RENDERING.formationTrail.dashSize,
+      gapSize: RENDERING.formationTrail.gapSize,
       depthWrite: false,
     });
     const points = [];
     for (const path of paths) {
       points.push(
-        new THREE.Vector3(path.from.x, path.from.y, 1.2),
-        new THREE.Vector3(path.to.x, path.to.y, 1.2),
+        new THREE.Vector3(path.from.x, path.from.y, RENDERING.formationTrail.z),
+        new THREE.Vector3(path.to.x, path.to.y, RENDERING.formationTrail.z),
       );
     }
     const trails = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), material);
     trails.computeLineDistances();
     this.scene.add(trails);
-    this.effects.push({ type: 'formation', object: trails, life: 0.9, maxLife: 0.9 });
+    this.effects.push({
+      type: 'formation',
+      object: trails,
+      life: RENDERING.formationTrail.life,
+      maxLife: RENDERING.formationTrail.life,
+    });
   }
 
   updateEffects(dt) {
@@ -793,10 +998,12 @@ export class GameRenderer {
           material.opacity = ratio * effect.object.userData.baseOpacities[index];
         });
         const packetY = -effect.object.userData.length / 2
-          + effect.object.userData.length * Math.min(1, progress * 1.7);
+          + effect.object.userData.length
+          * Math.min(1, progress * RENDERING.gunPulse.packetTravelSpeed);
         effect.object.userData.packet.position.y = packetY;
-        effect.object.userData.tracer.position.y = packetY - effect.object.userData.trailLength * 0.32;
-        effect.object.scale.x = 1 + progress * 0.28;
+        effect.object.userData.tracer.position.y = packetY
+          - effect.object.userData.trailLength * RENDERING.gunPulse.tracerLag;
+        effect.object.scale.x = 1 + progress * RENDERING.gunPulse.spreadGrowth;
         if (effect.life <= 0) {
           this.gunPulsePool.release(effect.object);
         } else {
@@ -806,8 +1013,14 @@ export class GameRenderer {
         effect.life -= dt;
         const ratio = Math.max(0, effect.life / effect.maxLife);
         const progress = 1 - ratio;
-        const pop = progress < 0.18 ? 0.72 + progress / 0.18 * 0.28 : 1;
-        const emphasis = effect.critical ? 1 + Math.sin(progress * Math.PI) * 0.1 : 1;
+        const pop = progress < RENDERING.damageNumber.popDurationRatio
+          ? RENDERING.damageNumber.initialScale
+            + progress / RENDERING.damageNumber.popDurationRatio
+            * (1 - RENDERING.damageNumber.initialScale)
+          : 1;
+        const emphasis = effect.critical
+          ? 1 + Math.sin(progress * Math.PI) * RENDERING.damageNumber.criticalEmphasis
+          : 1;
         effect.object.position.x += effect.drift * dt;
         effect.object.position.y += effect.riseSpeed * dt;
         effect.object.scale.set(
@@ -815,7 +1028,7 @@ export class GameRenderer {
           effect.baseHeight * pop * emphasis,
           1,
         );
-        effect.object.material.opacity = Math.min(1, ratio * 2.6);
+        effect.object.material.opacity = Math.min(1, ratio * RENDERING.damageNumber.fadeMultiplier);
         if (effect.life <= 0) {
           this.damageNumberPool.release(effect.object);
         } else {
@@ -836,16 +1049,20 @@ export class GameRenderer {
     this.effects = remaining;
   }
 
-  showTarget(x, y, ready, radius = 3.2) {
+  showTarget(x, y, ready, radius = RENDERING.targetMarker.defaultRadius) {
     this.targetMarker.visible = true;
-    this.targetMarker.position.set(x, y, 4);
-    this.targetMarker.userData.life = ready ? 1.16 : 0.45;
+    this.targetMarker.position.set(x, y, RENDERING.targetMarker.z);
+    this.targetMarker.userData.life = ready
+      ? RENDERING.targetMarker.readyLife
+      : RENDERING.targetMarker.rejectedLife;
     this.targetMarker.userData.maxLife = this.targetMarker.userData.life;
     this.targetMarker.userData.ready = ready;
-    this.targetMarker.scale.setScalar(ready ? 0.55 : 0.85);
+    this.targetMarker.scale.setScalar(
+      ready ? RENDERING.targetMarker.readyScale : RENDERING.targetMarker.rejectedScale,
+    );
     for (const child of this.targetMarker.children) {
-      child.material.color.setHex(ready ? COLORS.friendly : COLORS.enemy);
-      child.material.opacity = 0.9;
+      child.material.color.setHex(ready ? RENDER_COLORS.friendly : RENDER_COLORS.enemy);
+      child.material.opacity = RENDERING.targetMarker.opacity;
       if (child.userData.isRadiusRing) child.scale.setScalar(radius);
     }
   }
@@ -854,8 +1071,12 @@ export class GameRenderer {
     if (!this.targetMarker.visible) return;
     this.targetMarker.userData.life -= dt;
     const ratio = Math.max(0, this.targetMarker.userData.life / this.targetMarker.userData.maxLife);
-    this.targetMarker.rotation.z += dt * (this.targetMarker.userData.ready ? 3.2 : -2.2);
-    this.targetMarker.scale.addScalar(dt * (this.targetMarker.userData.ready ? 1.8 : 0.4));
+    this.targetMarker.rotation.z += dt * (this.targetMarker.userData.ready
+      ? RENDERING.targetMarker.readyRotationSpeed
+      : RENDERING.targetMarker.rejectedRotationSpeed);
+    this.targetMarker.scale.addScalar(dt * (this.targetMarker.userData.ready
+      ? RENDERING.targetMarker.readyGrowth
+      : RENDERING.targetMarker.rejectedGrowth));
     for (const child of this.targetMarker.children) child.material.opacity = ratio;
     if (this.targetMarker.userData.life <= 0) this.targetMarker.visible = false;
   }
@@ -888,30 +1109,40 @@ export class GameRenderer {
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
     const aspect = width / height;
-    const viewHeight = 154;
+    const viewHeight = RENDERING.viewport.viewHeight;
     const viewWidth = viewHeight * aspect;
-    const verticalCenter = 0;
-    const halfWidth = Math.max(28, Math.min(104, viewWidth / 2 - 3));
-    const compactLandscape = height <= 600 && aspect > 1.4;
+    const verticalCenter = RENDERING.viewport.verticalCenter;
+    const halfWidth = Math.max(
+      RENDERING.viewport.minimumHalfWidth,
+      Math.min(
+        RENDERING.viewport.maximumHalfWidth,
+        viewWidth / 2 - RENDERING.viewport.horizontalPadding,
+      ),
+    );
+    const compactLandscape = height <= RENDERING.viewport.compactMaximumHeight
+      && aspect > RENDERING.viewport.compactMinimumAspect;
     this.combatBounds = {
       ...ARENA,
       minX: -halfWidth,
       maxX: halfWidth,
       width: halfWidth * 2,
       halfWidth,
-      fleetOffsetY: compactLandscape ? 21 : 0,
+      fleetOffsetY: compactLandscape ? RENDERING.viewport.compactFleetOffsetY : 0,
     };
     this.camera.left = -viewWidth / 2;
     this.camera.right = viewWidth / 2;
     this.camera.top = viewHeight / 2 + verticalCenter;
     this.camera.bottom = -viewHeight / 2 + verticalCenter;
     this.camera.updateProjectionMatrix();
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(
+      window.devicePixelRatio || 1,
+      RENDERING.scene.maxPixelRatio,
+    ));
     this.renderer.setSize(width, height, false);
     if (this.defenseLine) {
       const position = this.defenseLine.geometry.getAttribute('position');
-      position.setXYZ(0, -halfWidth, ARENA.defenseLineY, -0.4);
-      position.setXYZ(1, halfWidth, ARENA.defenseLineY, -0.4);
+      position.setXYZ(0, -halfWidth, ARENA.defenseLineY, RENDERING.environment.defenseLineZ);
+      position.setXYZ(1, halfWidth, ARENA.defenseLineY, RENDERING.environment.defenseLineZ);
       position.needsUpdate = true;
     }
     return { ...this.combatBounds };
@@ -947,6 +1178,8 @@ export class GameRenderer {
         this.effectPool.release(effect.object);
       } else if (effect.type === 'gunPulse') {
         this.gunPulsePool.release(effect.object);
+      } else if (effect.type === 'damageNumber') {
+        this.damageNumberPool.release(effect.object);
       } else {
         this.scene.remove(effect.object);
         effect.object.geometry.dispose();

@@ -66,6 +66,7 @@ The production output is written to `dist/`.
 
 - `src/config/balance.js` contains centralized gameplay and balance values.
 - `src/config/enemies.js` contains enemy roles, elite modifiers, and boss balance.
+- `src/config/rendering.js` owns the color palette and tunable scene, ship, effect, animation, and viewport presentation values.
 - `src/combat/GameSimulation.js` owns deterministic combat and wave rules.
 - `src/progression/RunProgression.js` tracks the current run's lightweight rewards.
 - `src/progression/UpgradeSystem.js` owns progressive costs and mechanical upgrade effects.
