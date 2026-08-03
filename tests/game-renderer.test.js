@@ -33,6 +33,8 @@ describe('damage number formatting', () => {
 
     expect(source).toContain('new THREE.LineLoop');
     expect(source).not.toContain('shieldRing');
+    expect(source).not.toContain('shieldGlowMaterial');
+    expect(RENDERING.ships.shieldOutline).not.toHaveProperty('glowScale');
   });
 
   it('defines a complete layered visual profile for every ship archetype', () => {

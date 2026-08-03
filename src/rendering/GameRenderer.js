@@ -101,6 +101,7 @@ export class GameRenderer {
       friendlyMaterial: createMaterial(RENDER_COLORS.friendlyHull, {
         ...hullOptions,
         emissive: RENDER_COLORS.friendly,
+        emissiveIntensity: RENDERING.material.friendlyHullEmissiveIntensity,
       }),
       friendlyArmorMaterial: createMaterial(RENDER_COLORS.friendlyArmor, armorOptions),
       friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
@@ -166,14 +167,6 @@ export class GameRenderer {
         color: RENDER_COLORS.shield,
         transparent: true,
         opacity: RENDERING.material.shieldOpacity,
-        depthTest: false,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      shieldGlowMaterial: new THREE.LineBasicMaterial({
-        color: RENDER_COLORS.shield,
-        transparent: true,
-        opacity: RENDERING.material.shieldGlowOpacity,
         depthTest: false,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
@@ -621,24 +614,17 @@ export class GameRenderer {
 
     let shieldOutline = null;
     if (friendly) {
-      shieldOutline = new THREE.Group();
       const outlinePoints = shapePoints.map(([x, y]) => new THREE.Vector3(x, y, 0));
-      const createShieldLayer = (sharedMaterial, layerScale) => {
-        const material = sharedMaterial.clone();
-        material.userData.disposeWithShip = true;
-        const outline = new THREE.LineLoop(
-          new THREE.BufferGeometry().setFromPoints(outlinePoints),
-          material,
-        );
-        outline.scale.setScalar(layerScale);
-        outline.renderOrder = RENDERING.ships.shieldOutline.renderOrder;
-        outline.userData.baseOpacity = material.opacity;
-        shieldOutline.add(outline);
-      };
-      createShieldLayer(this.shared.shieldGlowMaterial, RENDERING.ships.shieldOutline.glowScale);
-      createShieldLayer(this.shared.shieldMaterial, 1);
+      const shieldMaterial = this.shared.shieldMaterial.clone();
+      shieldMaterial.userData.disposeWithShip = true;
+      shieldOutline = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(outlinePoints),
+        shieldMaterial,
+      );
       shieldOutline.position.z = RENDERING.ships.shieldOutline.z;
       shieldOutline.scale.setScalar(RENDERING.ships.shieldOutline.scale);
+      shieldOutline.renderOrder = RENDERING.ships.shieldOutline.renderOrder;
+      shieldOutline.userData.baseOpacity = shieldMaterial.opacity;
       shieldOutline.visible = entity.maxShield > 0;
       group.add(shieldOutline);
     }
@@ -808,11 +794,10 @@ export class GameRenderer {
             + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale
             + shieldPulse),
         );
-        group.userData.shieldOutline.children.forEach((outline) => {
-          outline.material.opacity = outline.userData.baseOpacity
-            * (RENDERING.entityAnimation.shieldMinimumOpacity
-              + shieldRatio * RENDERING.entityAnimation.shieldEnergyOpacity);
-        });
+        group.userData.shieldOutline.material.opacity
+          = group.userData.shieldOutline.userData.baseOpacity
+          * (RENDERING.entityAnimation.shieldMinimumOpacity
+            + shieldRatio * RENDERING.entityAnimation.shieldEnergyOpacity);
       }
       group.userData.engineGlows.forEach((engineGlow, index) => {
         const enginePulse = 1 + Math.sin(
