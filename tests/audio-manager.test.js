@@ -109,6 +109,25 @@ describe('AudioManager', () => {
     expect(audio.noise).toHaveBeenCalledWith(expect.objectContaining({ cutoff: 1480 }));
   });
 
+  it('signals the fleet meeting, clear route, and flagship advance', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { setTimeout });
+    const audio = new AudioManager({ now: () => 1_000 });
+    audio.tone = vi.fn();
+    audio.noise = vi.fn();
+
+    audio.handleEvents([
+      { type: 'fleetsAdvancing' },
+      { type: 'fleetsEngaged' },
+      { type: 'flagshipPathCleared' },
+      { type: 'flagshipAdvanceStarted' },
+    ]);
+    vi.runAllTimers();
+
+    expect(audio.tone.mock.calls.length).toBeGreaterThanOrEqual(6);
+    expect(audio.noise).toHaveBeenCalledTimes(2);
+  });
+
   it('gives every enabled interface button a quiet pointer cue', () => {
     let pointerHandler;
     const root = {

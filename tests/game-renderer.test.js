@@ -75,4 +75,15 @@ describe('damage number formatting', () => {
     expect(RENDER_COLORS.lancer).not.toBe(RENDER_COLORS.friendly);
     expect(RENDER_COLORS.guardian).not.toBe(RENDER_COLORS.friendly);
   });
+
+  it('renders the clear flagship route and dash as configured battlefield feedback', () => {
+    const rendererPath = fileURLToPath(new URL('../src/rendering/GameRenderer.js', import.meta.url));
+    const source = readFileSync(rendererPath, 'utf8');
+
+    expect(source).toContain('createAdvancePath()');
+    expect(source).toContain('syncAdvancePath(snapshot, deltaSeconds)');
+    expect(source).toContain("event.type === 'flagshipAdvanceStarted'");
+    expect(RENDERING.advancePath.dashSize).toBeGreaterThan(RENDERING.advancePath.gapSize);
+    expect(RENDERING.entityAnimation.dashEngineLength).toBeGreaterThan(1);
+  });
 });

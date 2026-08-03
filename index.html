@@ -34,6 +34,21 @@
         <span id="boss-barrier-state" class="boss-status__state">Barrier active · Hold flagship gun on target</span>
       </section>
 
+      <section id="wave-intel" class="wave-intel" aria-live="polite" hidden>
+        <span class="eyebrow eyebrow--danger">ENEMY FORMATION</span>
+        <strong id="enemy-formation-name">Line</strong>
+        <span id="wave-phase-label">Position your fleet</span>
+      </section>
+
+      <div id="wave-action" class="wave-action" hidden>
+        <button id="wave-action-button" class="wave-action__button" type="button">
+          <span id="wave-action-kicker">FORMATION LOCKED</span>
+          <strong id="wave-action-label">Ready</strong>
+          <span aria-hidden="true">→</span>
+        </button>
+        <small id="wave-action-hint">Press when your fleet is positioned.</small>
+      </div>
+
       <section class="hud hud--bottom" aria-label="Combat controls">
         <div id="formation-bar" class="formation-bar" role="group" aria-label="Custom formation command console">
           <div class="geometry-strengths" aria-label="Live formation geometry bonuses">
@@ -85,12 +100,12 @@
           <span class="eyebrow eyebrow--bright">TACTICAL LINK // ONLINE</span>
           <h1 id="start-title">Hold the voidline.</h1>
           <p>
-            Build your own formation in the lower fleet zone. Drag ships away from enemy warnings, then aim the flagship's pulsed cannon across the upper battlefield.
+            Read the enemy formation, arrange your fleet, and commit when ready. Both lines advance, lock into range, and fight until the flagship has a clear route through.
           </p>
           <div class="control-primer" aria-label="Controls">
-            <div><span class="control-primer__icon">↔</span><span>Lower quarter: drag any ship onto the snap grid</span></div>
-            <div><span class="control-primer__icon">◎</span><span>Upper battlefield: hold and sweep the flagship cannon</span></div>
-            <div><span class="control-primer__icon">△</span><span>Evade complete attack warnings to bank Tactical Edge</span></div>
+            <div><span class="control-primer__icon">◈</span><span>Study the revealed enemy formation and position your ships</span></div>
+            <div><span class="control-primer__icon">→</span><span>Press Ready to bring both fleets into half-map weapon range</span></div>
+            <div><span class="control-primer__icon">△</span><span>Advance through a clear lane—or keep fighting for more salvage</span></div>
           </div>
           <button id="start-button" class="primary-button" type="button">
             <span>Deploy fleet</span><span aria-hidden="true">→</span>

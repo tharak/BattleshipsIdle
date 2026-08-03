@@ -12,22 +12,51 @@ function advance(simulation, seconds) {
   for (let frame = 0; frame < frames; frame += 1) simulation.update(step);
 }
 
+function engageCurrentWave(simulation) {
+  expect(simulation.readyForBattle()).toMatchObject({ started: true });
+  for (let frame = 0; frame < 180 && simulation.getSnapshot().waveState.phase !== 'combat'; frame += 1) {
+    simulation.update(1 / 60);
+  }
+  expect(simulation.getSnapshot().waveState.phase).toBe('combat');
+}
+
+function startCombat(simulation) {
+  simulation.startRun();
+  engageCurrentWave(simulation);
+}
+
 describe('GameSimulation', () => {
-  it('starts with a seven-ship fleet and a first enemy wave', () => {
+  it('reveals an enemy formation and waits for the player to commit', () => {
     const simulation = createSimulation();
     simulation.startRun();
     const snapshot = simulation.getSnapshot();
+    const enemyPositions = snapshot.enemies.map(({ x, y }) => ({ x, y }));
 
     expect(snapshot.status).toBe('running');
     expect(snapshot.wave).toBe(1);
+    expect(snapshot.waveState.phase).toBe('deployment');
+    expect(snapshot.waveState).toMatchObject({
+      phase: 'deployment',
+      enemyFormationId: 'defensiveArc',
+      enemyFormationName: 'Defensive arc',
+      canReady: true,
+      weaponRange: ARENA.height / 2,
+    });
     expect(snapshot.friendlies).toHaveLength(FLEET.positions.length);
     expect(snapshot.enemies).toHaveLength(WAVES.startingEnemies);
-    expect(simulation.consumeEvents().map((event) => event.type)).toContain('waveStarted');
+    advance(simulation, 1);
+    expect(simulation.enemies.map(({ x, y }) => ({ x, y }))).toEqual(enemyPositions);
+    expect(simulation.consumeEvents().map((event) => event.type)).toContain('enemyFormationRevealed');
+
+    expect(simulation.readyForBattle()).toMatchObject({ started: true });
+    expect(simulation.getSnapshot().waveState.phase).toBe('approach');
+    advance(simulation, 2);
+    expect(simulation.getSnapshot().waveState.phase).toBe('combat');
   });
 
   it('keeps escort auto-fire while removing the flagship automatic attack', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.consumeEvents();
     advance(simulation, 0.9);
 
@@ -35,12 +64,11 @@ describe('GameSimulation', () => {
     const friendlyShots = events.filter((event) => event.type === 'projectileFired' && event.faction === 'friendly');
     expect(friendlyShots.length).toBeGreaterThan(0);
     expect(friendlyShots.every((event) => event.sourceRole !== 'command')).toBe(true);
-    expect(simulation.getSnapshot().projectiles.length).toBeGreaterThan(0);
   });
 
   it('starts the flagship gun manually and can resume before a full recharge', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.consumeEvents();
     const target = simulation.getSnapshot().enemies[0];
 
@@ -62,7 +90,7 @@ describe('GameSimulation', () => {
 
   it('stops each flagship pulse at the first enemy hull in its path', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [near, far, ...others] = simulation.enemies;
     Object.assign(near, { x: 0, y: -8, health: 1000, maxHealth: 1000, scale: 1 });
     Object.assign(far, { x: 0, y: 28, health: 1000, maxHealth: 1000, scale: 1 });
@@ -78,40 +106,88 @@ describe('GameSimulation', () => {
     expect(result.y).toBeLessThan(near.y);
   });
 
-  it('extends a missed flagship pulse to the battlefield boundary', () => {
+  it('limits a missed flagship pulse to the fleet weapon range', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.enemies.forEach((enemy) => { enemy.x = 40; });
 
     simulation.consumeEvents();
     simulation.beginFlagshipFire(0, ARENA.maxY);
     const result = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
+    const rangeMultiplier = 1 + simulation.getSnapshot().formation.modifiers.rangeBonus;
 
     expect(result.hitId).toBeNull();
-    expect(result).toMatchObject({ x: 0, y: ARENA.maxY });
+    expect(result.x).toBe(0);
+    expect(result.y - result.source.y).toBeCloseTo(FLEET.effectiveRange * rangeMultiplier);
+    expect(result.y).toBeLessThan(ARENA.maxY);
   });
 
-  it('clears a defeated wave, grants a wave reward, and starts the next wave', () => {
+  it('requires a flagship advance to clear a defeated wave and start the next deployment', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.consumeEvents();
 
     for (const enemy of [...simulation.enemies]) simulation.damageEntity(enemy, enemy.health, 'test');
     simulation.removeDestroyedEntities();
     simulation.resolveWaveIfNeeded();
 
-    expect(simulation.getSnapshot().waveIntermission).toBe(WAVES.intermission);
-    expect(simulation.beginFlagshipFire(0, 0)).toMatchObject({ firing: false, reason: 'inactive' });
+    expect(simulation.getSnapshot().waveState).toMatchObject({ phase: 'combat', canAdvance: true });
+    expect(simulation.getSnapshot().waveIntermission).toBe(0);
     expect(simulation.getSnapshot().progression.salvage).toBeGreaterThan(0);
+    expect(simulation.advanceToNextWave()).toMatchObject({ advancing: true, remainingEnemies: 0 });
+    advance(simulation, 1);
+    expect(simulation.getSnapshot().waveIntermission).toBeGreaterThan(0);
+    expect(simulation.getSnapshot().waveIntermission).toBeLessThanOrEqual(WAVES.intermission);
+    expect(simulation.beginFlagshipFire(0, 0)).toMatchObject({ firing: false, reason: 'inactive' });
 
     advance(simulation, WAVES.intermission + 0.1);
     expect(simulation.getSnapshot().wave).toBe(2);
+    expect(simulation.getSnapshot().waveState.phase).toBe('deployment');
     expect(simulation.getSnapshot().enemies.length).toBeGreaterThan(0);
+  });
+
+  it('reveals all five enemy formations from the shared template set', () => {
+    const ids = ['line', 'wedge', 'defensiveArc', 'splitWings', 'denseColumn'];
+
+    ids.forEach((expectedId, index) => {
+      const simulation = new GameSimulation({ random: () => (index + 0.1) / ids.length });
+      simulation.startRun();
+      expect(simulation.getSnapshot().waveState.enemyFormationId).toBe(expectedId);
+    });
+  });
+
+  it('lets the player farm remaining contacts after the flagship path clears', () => {
+    const simulation = createSimulation();
+    startCombat(simulation);
+
+    expect(simulation.advanceToNextWave()).toMatchObject({ advancing: false, reason: 'blocked' });
+    for (const blocker of simulation.getFlagshipPathBlockers()) {
+      simulation.damageEntity(blocker, blocker.health, 'test');
+    }
+    simulation.removeDestroyedEntities();
+    simulation.resolveWaveIfNeeded();
+    const pathSnapshot = simulation.getSnapshot();
+
+    expect(pathSnapshot.waveState.canAdvance).toBe(true);
+    expect(pathSnapshot.waveState.remainingEnemies).toBeGreaterThan(0);
+    const salvageWithClearPath = pathSnapshot.progression.salvage;
+    const optionalTarget = simulation.enemies[0];
+    simulation.damageEntity(optionalTarget, optionalTarget.health, 'test');
+    simulation.removeDestroyedEntities();
+    simulation.resolveWaveIfNeeded();
+    expect(simulation.getSnapshot().progression.salvage).toBeGreaterThan(salvageWithClearPath);
+
+    const flagshipY = simulation.getCommandShip().y;
+    expect(simulation.advanceToNextWave()).toMatchObject({ advancing: true });
+    advance(simulation, 0.1);
+    expect(simulation.getCommandShip().y).toBeGreaterThan(flagshipY);
+    advance(simulation, 1);
+    expect(simulation.getSnapshot().waveState.phase).toBe('intermission');
   });
 
   it('ends the run when the command ship is destroyed', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.consumeEvents();
     const command = simulation.getCommandShip();
 
@@ -123,7 +199,7 @@ describe('GameSimulation', () => {
 
   it('does no combat work while suspended or manually paused', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const before = simulation.getSnapshot().elapsed;
 
     simulation.setSuspended(true);
@@ -138,7 +214,7 @@ describe('GameSimulation', () => {
 
   it('recovers flagship energy and allows a later firing cycle', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const target = simulation.enemies[0];
 
     expect(simulation.beginFlagshipFire(target.x, target.y).firing).toBe(true);
@@ -152,7 +228,7 @@ describe('GameSimulation', () => {
 
   it('tracks a dragged aim direction throughout sustained fire', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [left, right, ...others] = simulation.enemies;
     Object.assign(left, { x: -18, originX: -18, y: 0, speed: 0, drift: 0, health: 1000, maxHealth: 1000, scale: 1 });
     Object.assign(right, { x: 18, originX: 18, y: 0, speed: 0, drift: 0, health: 1000, maxHealth: 1000, scale: 1 });
@@ -170,7 +246,7 @@ describe('GameSimulation', () => {
 
   it('automatically ends a depleted firing cycle and permits a partial-power follow-up', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.beginFlagshipFire(0, ARENA.maxY);
 
     advance(simulation, FLAGSHIP_GUN.firingDuration + 0.1);
@@ -189,7 +265,7 @@ describe('GameSimulation', () => {
 
   it('scales a sub-pulse manual shot to the available energy and rejects an empty gun', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [target, ...others] = simulation.enemies;
     Object.assign(target, { x: 0, y: 0, health: 1000, maxHealth: 1000, speed: 0, drift: 0 });
     others.forEach((enemy) => { enemy.x = 40; });
@@ -213,7 +289,7 @@ describe('GameSimulation', () => {
 
   it('ramps damage and critical chance across an uninterrupted full burst', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [target, ...others] = simulation.enemies;
     Object.assign(target, {
       x: 0,
@@ -251,8 +327,8 @@ describe('GameSimulation', () => {
   it('applies the configured critical multiplier and reports the outcome', () => {
     const regular = createSimulation();
     const critical = new GameSimulation({ random: () => 0 });
-    regular.startRun();
-    critical.startRun();
+    startCombat(regular);
+    startCombat(critical);
     for (const simulation of [regular, critical]) {
       const [target, ...others] = simulation.enemies;
       Object.assign(target, { x: 0, y: 0, health: 1000, maxHealth: 1000, speed: 0, drift: 0 });
@@ -278,7 +354,7 @@ describe('GameSimulation', () => {
 
   it('resets burst progress on release but preserves it while aim changes', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [target, ...others] = simulation.enemies;
     Object.assign(target, { x: 0, originX: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
     others.forEach((enemy) => { Object.assign(enemy, { x: 40, originX: 40, speed: 0, drift: 0 }); });
@@ -301,7 +377,7 @@ describe('GameSimulation', () => {
       random: () => 0.5,
       progressionState: { upgrades: { automatedGunnery: 1 } },
     });
-    simulation.startRun();
+    startCombat(simulation);
     const target = simulation.enemies[0];
     simulation.flagshipGunEnergy = FLAGSHIP_GUN.firingDuration / 2;
     simulation.consumeEvents();
@@ -315,23 +391,22 @@ describe('GameSimulation', () => {
     expect(simulation.beginFlagshipFire(target.x, target.y)).toMatchObject({ firing: true });
   });
 
-  it('applies breach pressure to the command ship', () => {
+  it('stops enemy forward movement when the fleets meet', () => {
     const simulation = createSimulation();
-    simulation.startRun();
-    const command = simulation.getCommandShip();
+    startCombat(simulation);
     const enemy = simulation.enemies[0];
-    const healthBefore = command.health;
-    enemy.y = -67.99;
+    const battleY = enemy.y;
 
-    simulation.update(1 / 60);
+    advance(simulation, 1);
 
-    expect(command.health).toBeLessThan(healthBefore);
-    expect(simulation.consumeEvents().some((event) => event.type === 'breach')).toBe(true);
+    expect(enemy.y).toBe(battleY);
+    expect(simulation.getSnapshot().waveState.phase).toBe('combat');
+    expect(simulation.consumeEvents().some((event) => event.type === 'breach')).toBe(false);
   });
 
   it('restarts with fresh progression, health, cooldown, and projectiles', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const target = simulation.enemies[0];
     simulation.beginFlagshipFire(target.x, target.y);
     advance(simulation, 0.8);
@@ -343,6 +418,7 @@ describe('GameSimulation', () => {
 
     expect(snapshot.status).toBe('running');
     expect(snapshot.wave).toBe(1);
+    expect(snapshot.waveState).toMatchObject({ phase: 'deployment', canReady: true });
     expect(snapshot.commandHealth).toBe(FLEET.commandHealth);
     expect(snapshot.flagshipGun.energyRatio).toBe(1);
     expect(snapshot.projectiles).toHaveLength(0);
@@ -352,7 +428,7 @@ describe('GameSimulation', () => {
 
   it('resolves projectile hits when updated at the runtime fixed step', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const healthBefore = simulation.enemies.reduce((total, enemy) => total + enemy.health, 0);
 
     advance(simulation, 2);
@@ -364,7 +440,7 @@ describe('GameSimulation', () => {
 
   it('changes formation during combat and exposes its mechanical state', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const before = simulation.friendlies[0].x;
 
     const result = simulation.changeFormation('wedge');
@@ -378,7 +454,7 @@ describe('GameSimulation', () => {
 
   it('adapts formation width and enemy bounds to the visible battlefield', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
 
     simulation.setArenaBounds({ halfWidth: 30 });
 
@@ -390,7 +466,7 @@ describe('GameSimulation', () => {
   it('applies defensive arc mitigation to incoming damage', () => {
     const simulation = createSimulation();
     simulation.changeFormation('defensiveArc');
-    simulation.startRun();
+    startCombat(simulation);
     const command = simulation.getCommandShip();
 
     const reduction = simulation.getSnapshot().formation.modifiers.flagshipDamageReduction;
@@ -403,9 +479,9 @@ describe('GameSimulation', () => {
   it('makes dense-column flagship gun pulses stronger', () => {
     const line = createSimulation();
     const column = createSimulation();
-    line.startRun();
+    startCombat(line);
     column.changeFormation('denseColumn');
-    column.startRun();
+    startCombat(column);
     line.enemies[0].health = 1000;
     line.enemies[0].maxHealth = 1000;
     column.enemies[0].health = 1000;
@@ -425,10 +501,11 @@ describe('GameSimulation', () => {
       random: () => 0.5,
       progressionState: { upgrades: { automatedGunnery: 1 } },
     });
-    simulation.startRun();
+    startCombat(simulation);
     simulation.enemies = [];
     simulation.wave = 4;
     simulation.beginNextWave();
+    engageCurrentWave(simulation);
     const boss = simulation.enemies.find((enemy) => enemy.boss);
     const escort = simulation.enemies.find((enemy) => !enemy.boss);
 
@@ -449,7 +526,7 @@ describe('GameSimulation', () => {
       random: () => 0.5,
       progressionState: { currency: 1000 },
     });
-    simulation.startRun();
+    startCombat(simulation);
     const damageBefore = simulation.friendlies[0].damage;
 
     const damage = simulation.purchaseUpgrade('shipDamage');
@@ -470,7 +547,7 @@ describe('GameSimulation', () => {
       random: () => 0.5,
       progressionState: { currency: 1000 },
     });
-    simulation.startRun();
+    startCombat(simulation);
     simulation.friendlies[0].alive = false;
     simulation.removeDestroyedEntities();
     const survivingSlots = simulation.friendlies.map(({ slot }) => slot);
@@ -487,7 +564,7 @@ describe('GameSimulation', () => {
       random: () => 0.5,
       progressionState: { currency: 500, upgrades: { shieldStrength: 1 } },
     });
-    simulation.startRun();
+    startCombat(simulation);
     const command = simulation.getCommandShip();
     const hullBefore = command.health;
     const shieldBefore = command.shield;
@@ -501,7 +578,7 @@ describe('GameSimulation', () => {
 
   it('pauses combat while the upgrade shop is open', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     advance(simulation, 0.5);
     const elapsed = simulation.getSnapshot().elapsed;
 
@@ -514,7 +591,7 @@ describe('GameSimulation', () => {
 
   it('spawns an elite on wave three and a barrier boss on wave five', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.enemies = [];
     simulation.wave = 2;
     simulation.beginNextWave();
@@ -523,6 +600,7 @@ describe('GameSimulation', () => {
     simulation.enemies = [];
     simulation.wave = 4;
     simulation.beginNextWave();
+    engageCurrentWave(simulation);
     const boss = simulation.enemies.find((enemy) => enemy.boss);
     expect(boss).toBeDefined();
     expect(boss.role).toBe('boss');
@@ -531,10 +609,11 @@ describe('GameSimulation', () => {
 
   it('makes automatic fire weak against a boss until the flagship gun exposes its hull', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.enemies = [];
     simulation.wave = 4;
     simulation.beginNextWave();
+    engageCurrentWave(simulation);
     const boss = simulation.enemies.find((enemy) => enemy.boss);
     const before = boss.health;
 
@@ -550,7 +629,7 @@ describe('GameSimulation', () => {
   it('applies artillery area damage to clustered ships', () => {
     const simulation = createSimulation();
     simulation.changeFormation('denseColumn');
-    simulation.startRun();
+    startCombat(simulation);
     const target = simulation.friendlies[0];
     const before = simulation.friendlies.map((ship) => ship.health);
     simulation.projectiles.push({
@@ -583,12 +662,12 @@ describe('GameSimulation', () => {
 
   it('edits the active loadout live, moves the flagship, and rejects invalid drops', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const command = simulation.getCommandShip();
     const originalY = command.y;
 
     expect(simulation.beginShipDrag(command.x, command.y).dragging).toBe(true);
-    expect(simulation.previewShipDrag(0, -50).preview.valid).toBe(true);
+    expect(simulation.previewShipDrag(0, -25).preview.valid).toBe(true);
     expect(simulation.commitShipDrag().changed).toBe(true);
     advance(simulation, 0.2);
     expect(command.y).toBeGreaterThan(originalY);
@@ -597,29 +676,29 @@ describe('GameSimulation', () => {
 
     const escort = simulation.friendlies[0];
     const occupied = simulation.getPersistentState().formationLoadouts[0].slots[1];
+    const offsetY = simulation.getSnapshot().formation.placement.offset.y;
     expect(simulation.beginShipDrag(escort.x, escort.y).dragging).toBe(true);
-    expect(simulation.previewShipDrag(occupied.x, occupied.y).preview.valid).toBe(false);
+    expect(simulation.previewShipDrag(occupied.x, occupied.y + offsetY).preview.valid).toBe(false);
     expect(simulation.commitShipDrag()).toMatchObject({ changed: false, reason: 'overlap' });
   });
 
-  it('unlocks three loadouts and ignores their cooldown during intermissions', () => {
+  it('unlocks three loadouts and ignores their cooldown during deployment', () => {
     const simulation = new GameSimulation({
       random: () => 0.5,
       progressionState: { upgrades: { commandNetwork: 3 } },
     });
-    simulation.startRun();
+    startCombat(simulation);
 
     expect(simulation.activateFormationLoadout(1).changed).toBe(true);
     expect(simulation.activateFormationLoadout(2)).toMatchObject({ changed: false, reason: 'cooldown' });
-    simulation.waveResolved = true;
-    simulation.waveIntermission = 1;
+    simulation.wavePhase = 'deployment';
     expect(simulation.activateFormationLoadout(2).changed).toBe(true);
     expect(simulation.getSnapshot().formation.activeLoadoutIndex).toBe(2);
   });
 
   it('creates blast circles, strafing lanes, focused lines, and combined boss warnings', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const source = { id: 'major', role: 'boss', x: 0, y: 45, damage: 20, boss: true, majorPatternIndex: 3 };
 
     const blast = simulation.createTelegraph(source, 'artillery');
@@ -637,7 +716,7 @@ describe('GameSimulation', () => {
 
   it('resolves warnings against impact-time positions and caps Tactical Edge at three', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const source = { id: 'artillery', role: 'artillery', x: 0, y: 45, damage: 20, boss: false };
     const command = simulation.getCommandShip();
     const hullBefore = command.health;
@@ -661,7 +740,7 @@ describe('GameSimulation', () => {
 
   it('consumes all Tactical Edge stacks at burst start for damage and critical chance', () => {
     const baseline = createSimulation();
-    baseline.startRun();
+    startCombat(baseline);
     const [baselineTarget, ...baselineOthers] = baseline.enemies;
     Object.assign(baselineTarget, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
     baselineOthers.forEach((enemy) => { enemy.x = 40; });
@@ -670,7 +749,7 @@ describe('GameSimulation', () => {
     const baselinePulse = baseline.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
 
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const [target, ...others] = simulation.enemies;
     Object.assign(target, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
     others.forEach((enemy) => { enemy.x = 40; });
@@ -689,7 +768,7 @@ describe('GameSimulation', () => {
 
   it('adds Tactical Edge critical chance to the first pulse', () => {
     const simulation = new GameSimulation({ random: () => 0.2 });
-    simulation.startRun();
+    startCombat(simulation);
     const [target, ...others] = simulation.enemies;
     Object.assign(target, { x: 0, y: 0, health: 10000, maxHealth: 10000, speed: 0, drift: 0 });
     others.forEach((enemy) => { enemy.x = 40; });
@@ -705,7 +784,7 @@ describe('GameSimulation', () => {
 
   it('cancels formation editing when combat pauses or ends', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     const ship = simulation.friendlies[0];
     expect(simulation.beginShipDrag(ship.x, ship.y).dragging).toBe(true);
 
@@ -720,7 +799,7 @@ describe('GameSimulation', () => {
 
   it('keeps Tactical Edge between waves but resets it with the run', () => {
     const simulation = createSimulation();
-    simulation.startRun();
+    startCombat(simulation);
     simulation.tacticalEdgeStacks = 2;
     simulation.enemies = [];
     simulation.wave = 1;

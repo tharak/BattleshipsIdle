@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getEnemyStats, getWaveEnemyCount } from '../src/config/balance.js';
+import {
+  ARENA,
+  ENEMIES,
+  FLEET,
+  WAVE_FLOW,
+  getEnemyStats,
+  getWaveEnemyCount,
+} from '../src/config/balance.js';
 
 describe('wave balance', () => {
   it('adds enemies gradually and respects the cap', () => {
@@ -18,5 +25,13 @@ describe('wave balance', () => {
     expect(later.damage).toBeGreaterThan(first.damage);
     expect(later.fireInterval).toBeLessThan(first.fireInterval);
     expect(later.reward).toBeGreaterThan(first.reward);
+  });
+
+  it('limits weapons to half the battlefield and centralizes the fleet approach rules', () => {
+    expect(FLEET.effectiveRange).toBe(ARENA.height / 2);
+    expect(ENEMIES.effectiveRange).toBe(ARENA.height / 2);
+    expect(WAVE_FLOW.friendlyAdvanceDistance).toBeGreaterThan(0);
+    expect(WAVE_FLOW.enemyAdvanceDistance).toBeGreaterThan(0);
+    expect(WAVE_FLOW.flagshipDashSpeed).toBeGreaterThan(WAVE_FLOW.enemyApproachSpeed);
   });
 });

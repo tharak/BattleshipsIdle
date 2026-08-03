@@ -80,6 +80,27 @@ describe('FormationSystem', () => {
     expect(system.activeLoadout.templateId).toBeNull();
   });
 
+  it('keeps saved deployment coordinates while editing an advanced battle line', () => {
+    const system = new FormationSystem();
+    const ships = fleet();
+    system.applyInitialPositions(ships);
+    system.setWorldOffset(0, 25);
+    system.reflow(ships);
+    system.update(ships, 2);
+
+    const flagship = ships.find(({ role }) => role === 'command');
+    expect(flagship.y).toBe(-30);
+    expect(system.snapshot(ships).placement.bounds).toMatchObject({ minY: -30, maxY: -15 });
+    expect(system.previewPlacement(flagship.slot, 0, -25, ships)).toMatchObject({
+      candidate: { x: 0, y: -25 },
+      loadoutCandidate: { x: 0, y: -50 },
+      valid: true,
+    });
+    system.commitPlacement(ships);
+    expect(system.exportLoadouts()[0].slots.find(({ slot }) => slot === flagship.slot))
+      .toMatchObject({ x: 0, y: -50 });
+  });
+
   it('derives opposed strengths from current geometry', () => {
     const wide = new FormationSystem('line');
     const dense = new FormationSystem('denseColumn');

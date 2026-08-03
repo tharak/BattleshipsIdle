@@ -24,7 +24,7 @@ export const FLEET = Object.freeze({
   guardianFireInterval: 1.02,
   projectileSpeed: 104,
   projectileLifetime: 2.2,
-  effectiveRange: 128,
+  effectiveRange: ARENA.height / 2,
   positions: [
     { role: 'escort', x: -33, y: -45 },
     { role: 'escort', x: -22, y: -48 },
@@ -47,8 +47,7 @@ export const ENEMIES = Object.freeze({
   minFireInterval: 1.05,
   projectileSpeed: 40,
   projectileLifetime: 4.2,
-  fireThresholdY: 65,
-  breachDamageMultiplier: 3.2,
+  effectiveRange: ARENA.height / 2,
   baseReward: 7,
   rewardGrowth: 1.09,
 });
@@ -74,6 +73,18 @@ export const WAVES = Object.freeze({
   clearRewardBase: 12,
   spawnTopMin: 48,
   spawnTopMax: 69,
+});
+
+export const WAVE_FLOW = Object.freeze({
+  formationRevealMinimumSlots: 7,
+  formationHorizontalMargin: 5,
+  friendlyAdvanceDistance: 25,
+  enemyAdvanceDistance: 25,
+  enemyApproachSpeed: 22,
+  arrivalTolerance: 0.05,
+  flagshipPathHalfWidth: 2.6,
+  flagshipDashSpeed: 145,
+  flagshipExitPadding: 12,
 });
 
 export const SIMULATION = Object.freeze({

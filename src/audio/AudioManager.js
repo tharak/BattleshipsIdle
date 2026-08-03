@@ -130,6 +130,26 @@ export class AudioManager {
           ]);
         }
         break;
+      case 'fleetsAdvancing':
+        this.sequence([
+          { frequency: 120, endFrequency: 210, duration: 0.28, gain: 0.028, type: 'sawtooth' },
+          { delay: 150, frequency: 230, endFrequency: 360, duration: 0.24, gain: 0.025, type: 'triangle' },
+        ]);
+        break;
+      case 'fleetsEngaged':
+        this.tone({ frequency: 180, endFrequency: 72, duration: 0.3, gain: 0.038, type: 'square' });
+        this.noise({ duration: 0.22, gain: 0.022, cutoff: 520 });
+        break;
+      case 'flagshipPathCleared':
+        this.sequence([
+          { frequency: 520, endFrequency: 760, duration: 0.14, gain: 0.03, type: 'sine' },
+          { delay: 100, frequency: 760, endFrequency: 1120, duration: 0.2, gain: 0.034, type: 'triangle' },
+        ]);
+        break;
+      case 'flagshipAdvanceStarted':
+        this.tone({ frequency: 96, endFrequency: 620, duration: 0.46, gain: 0.048, type: 'sawtooth' });
+        this.noise({ duration: 0.34, gain: 0.025, cutoff: 780 });
+        break;
       case 'waveCleared':
         this.sequence([
           { frequency: 330, endFrequency: 390, duration: 0.12, gain: 0.027, type: 'triangle' },

@@ -10,14 +10,16 @@ The latest deployed build will be available at:
 
 <https://tharak.github.io/BattleshipsIdle/>
 
-- Use the opening deployment overlay to send the fleet into battle.
+- Use the opening deployment overlay to reveal the enemy's randomly selected formation.
 - Drag any friendly ship in the lower quarter of the battlefield. Destinations snap to the visible five-unit grid, reject overlap, and save into the active loadout immediately.
+- Press **Ready** at center screen when the formation is set. Both fleets advance, stop at contact range, and only then begin firing.
 - Drag in the upper three quarters to aim the flagship's pulsed cannon. Partial charge is always usable, while an uninterrupted burst builds pulse damage and critical-hit chance.
 - Watch blast circles, strafing lanes, and focused firing lines. Completely evading a warning earns Tactical Edge for the next flagship burst.
 - Switch among up to three custom loadouts, or apply one of the five editable starter templates from the compact picker.
 - Read the live spread, cohesion, and flagship-screening bonuses in the command console. Open upgrades from its salvage button.
 - Escort ships fire automatically; the flagship only fires while you hold and aim its cannon.
-- Destroy attackers to earn salvage and advance to harder waves.
+- All ships are limited to half the battlefield's height in weapon range.
+- Clear the flagship's forward lane to unlock **Advance**. Dash into the next wave immediately, or keep destroying off-lane contacts for more salvage first.
 - Boss barriers blunt automatic fire. Sweep the flagship gun across the boss to expose its hull, then capitalize before the barrier restores.
 - Protect the command ship. If it is destroyed, use **Restart** to begin a new run.
 
@@ -28,12 +30,14 @@ The interface is designed for touchscreens and also supports mouse input on desk
 The current prototype includes:
 
 - an edge-to-edge Three.js battlefield with full-height framing, adaptive horizontal combat bounds, and original procedural ships;
+- a reveal/deploy/approach/combat encounter loop using the five shared formation templates, a centered Ready command, and half-field weapon range;
 - three persistent custom loadouts, five editable starter templates, a snap-grid editor, and physical formation maneuvers;
 - raiders, skirmishers, bulwarks, artillery ships, elites, and recurring Rift bastion bosses;
 - automatic friendly fire, basic enemy pressure, and position-resolved telegraphed major attacks;
 - a hold-and-aim pulsed flagship cannon with partial-charge firing, escalating burst damage and critical chance, proportional cooling, turret recoil, tracers, and first-contact impacts;
 - boss barriers that reward actively tracking the target with flagship fire;
 - damage, destruction, salvage rewards, defeat, and restart behavior;
+- a position-tested flagship escape lane that lets the player secure a wave early or stay in combat to farm remaining contacts;
 - flagship-mounted energy lights, firing/cooling audio, and persistent in-world hull and shield bars;
 - an always-visible formation console with live/preview geometry bonuses, loadout state, Tactical Edge, templates, and the salvage/upgrade control;
 - transient wave announcements plus readable flagship and boss status;

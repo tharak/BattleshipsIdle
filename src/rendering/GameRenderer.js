@@ -90,6 +90,7 @@ export class GameRenderer {
     this.gunPulsePool = this.createGunPulsePool();
     this.damageNumberPool = this.createDamageNumberPool();
     this.createEnvironment();
+    this.createAdvancePath();
     this.createTargetMarker();
     this.createFormationEditor();
     this.resize();
@@ -295,6 +296,26 @@ export class GameRenderer {
     haze.position.set(...RENDERING.environment.hazePosition);
     haze.rotation.z = RENDERING.environment.hazeRotation;
     this.scene.add(haze);
+  }
+
+  createAdvancePath() {
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, RENDERING.advancePath.z),
+      new THREE.Vector3(0, ARENA.maxY, RENDERING.advancePath.z),
+    ]);
+    const material = new THREE.LineDashedMaterial({
+      color: RENDER_COLORS.advancePath,
+      transparent: true,
+      opacity: RENDERING.advancePath.opacity,
+      dashSize: RENDERING.advancePath.dashSize,
+      gapSize: RENDERING.advancePath.gapSize,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.advancePath = new THREE.Line(geometry, material);
+    this.advancePath.computeLineDistances();
+    this.advancePath.visible = false;
+    this.scene.add(this.advancePath);
   }
 
   createTargetMarker() {
@@ -947,6 +968,7 @@ export class GameRenderer {
     this.syncProjectiles(snapshot.projectiles);
     this.syncTelegraphs(snapshot.telegraphs);
     this.syncFormationEditor(snapshot.formation);
+    this.syncAdvancePath(snapshot, deltaSeconds);
     this.updateEffects(deltaSeconds);
     this.updateTargetMarker(deltaSeconds);
 
@@ -969,6 +991,24 @@ export class GameRenderer {
       + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
     this.camera.position.y = this.baseCameraPosition.y
       + (this.screenShakeEnabled ? (Math.random() - 0.5) * shakeAmount : 0);
+  }
+
+  syncAdvancePath(snapshot, deltaSeconds) {
+    const phase = snapshot.waveState?.phase;
+    const command = snapshot.friendlies.find((ship) => ship.role === 'command');
+    const visible = Boolean(command
+      && (snapshot.waveState?.canAdvance || phase === 'extraction'));
+    this.advancePath.visible = visible;
+    if (!visible) return;
+    const position = this.advancePath.geometry.getAttribute('position');
+    position.setXYZ(0, command.x, command.y + 3, RENDERING.advancePath.z);
+    position.setXYZ(1, command.x, snapshot.arena.maxY, RENDERING.advancePath.z);
+    position.needsUpdate = true;
+    this.advancePath.computeLineDistances();
+    this.advancePath.material.opacity = phase === 'extraction'
+      ? RENDERING.advancePath.extractionOpacity
+      : RENDERING.advancePath.opacity;
+    this.advancePath.material.dashOffset -= deltaSeconds * RENDERING.advancePath.dashSpeed;
   }
 
   syncEntities(entities, flagshipGun = {}, deltaSeconds = 0) {
@@ -1065,7 +1105,8 @@ export class GameRenderer {
         const [baseX, baseY, baseZ] = engineGlow.userData.baseScale;
         engineGlow.scale.set(
           baseX * enginePulse,
-          baseY * (enginePulse + RENDERING.entityAnimation.enginePulseElongation),
+          baseY * (enginePulse + RENDERING.entityAnimation.enginePulseElongation)
+            * (entity.dashing ? RENDERING.entityAnimation.dashEngineLength : 1),
           baseZ,
         );
       });
@@ -1188,6 +1229,10 @@ export class GameRenderer {
         this.shake = Math.max(this.shake, RENDERING.eventEffects.breachShake);
       } else if (['formationChanged', 'formationShipMoved', 'loadoutActivated'].includes(event.type)) {
         this.spawnFormationTrails(event.paths);
+      } else if (event.type === 'fleetsAdvancing') {
+        this.spawnFormationTrails(event.friendlyPaths);
+      } else if (event.type === 'flagshipAdvanceStarted') {
+        this.spawnFormationTrails([event.path], RENDER_COLORS.advancePath);
       } else if (event.type === 'telegraphResolved' && event.kind !== 'blast') {
         const point = event.target ?? event.source;
         this.spawnImpact(point.x, point.y, RENDER_COLORS.enemy, RENDERING.telegraph.resolvedImpact);
@@ -1389,10 +1434,10 @@ export class GameRenderer {
     }
   }
 
-  spawnFormationTrails(paths) {
+  spawnFormationTrails(paths, color = RENDER_COLORS.friendly) {
     if (!paths?.length) return;
     const material = new THREE.LineDashedMaterial({
-      color: RENDER_COLORS.friendly,
+      color,
       transparent: true,
       opacity: RENDERING.formationTrail.opacity,
       dashSize: RENDERING.formationTrail.dashSize,
@@ -1639,6 +1684,7 @@ export class GameRenderer {
     this.shake = 0;
     this.targetMarker.visible = false;
     this.formationEditor.visible = false;
+    this.advancePath.visible = false;
   }
 
   disposeGroupGeometry(group) {

@@ -27,4 +27,17 @@ describe('flagship vitals HUD', () => {
     expect(styles).toContain('@media (max-width: 720px)');
     expect(styles).toContain('grid-template-areas:');
   });
+
+  it('provides a centered accessible control for readiness and flagship advancement', () => {
+    const markup = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+    expect(markup).toContain('id="wave-intel"');
+    expect(markup).toContain('id="enemy-formation-name"');
+    expect(markup).toContain('id="wave-action-button"');
+    expect(markup).toContain('id="wave-action-hint"');
+    expect(styles).toContain('.wave-action');
+    expect(styles).toContain('top: 50%');
+    expect(styles).toContain('.wave-action[data-mode="advance"]');
+  });
 });

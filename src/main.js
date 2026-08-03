@@ -63,6 +63,16 @@ const hud = new HudController({
     simulation.restartRun();
     consumeAndDispatchEvents();
   },
+  onReady: () => {
+    const result = simulation.readyForBattle();
+    consumeAndDispatchEvents();
+    return result;
+  },
+  onAdvance: () => {
+    const result = simulation.advanceToNextWave();
+    consumeAndDispatchEvents();
+    return result;
+  },
   onLoadout: (loadoutIndex) => {
     const result = simulation.activateFormationLoadout(loadoutIndex);
     consumeAndDispatchEvents();

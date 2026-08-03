@@ -13,6 +13,8 @@ export class HudController {
   constructor({
     onStart,
     onRestart,
+    onReady,
+    onAdvance,
     onLoadout,
     onTemplate,
     onShopOpen,
@@ -33,6 +35,14 @@ export class HudController {
       gameoverOverlay: document.querySelector('#gameover-overlay'),
       restartButton: document.querySelector('#restart-button'),
       runSummary: document.querySelector('#run-summary'),
+      waveIntel: document.querySelector('#wave-intel'),
+      enemyFormationName: document.querySelector('#enemy-formation-name'),
+      wavePhaseLabel: document.querySelector('#wave-phase-label'),
+      waveAction: document.querySelector('#wave-action'),
+      waveActionButton: document.querySelector('#wave-action-button'),
+      waveActionKicker: document.querySelector('#wave-action-kicker'),
+      waveActionLabel: document.querySelector('#wave-action-label'),
+      waveActionHint: document.querySelector('#wave-action-hint'),
       loadoutOptions: [...document.querySelectorAll('[data-loadout]')],
       templatePicker: document.querySelector('#formation-template'),
       spreadStrength: document.querySelector('#spread-strength'),
@@ -65,6 +75,10 @@ export class HudController {
     this.messageTimer = 0;
     this.elements.startButton.addEventListener('click', onStart);
     this.elements.restartButton.addEventListener('click', onRestart);
+    this.elements.waveActionButton.addEventListener('click', () => {
+      if (this.waveActionMode === 'ready') onReady();
+      else if (this.waveActionMode === 'advance') onAdvance();
+    });
     this.elements.shopButton.addEventListener('click', onShopOpen);
     this.elements.startShopButton.addEventListener('click', onShopOpen);
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
@@ -82,6 +96,7 @@ export class HudController {
     this.onboardingStage = 0;
     this.onOnboardingComplete = onOnboardingComplete;
     this.coachTimer = 0;
+    this.waveActionMode = null;
     this.showOfflineSummary(offlineSummary);
     this.setReadyState();
   }
@@ -116,6 +131,10 @@ export class HudController {
     this.elements.flagshipVitals.setAttribute('aria-label', `Flagship hull ${hullPercent} percent, shield ${shieldPercent} percent`);
 
     const { formation } = snapshot;
+    const waveState = snapshot.waveState ?? { phase: 'idle' };
+    const formationEditable = snapshot.status === 'ready'
+      || (['running', 'paused'].includes(snapshot.status)
+        && ['deployment', 'combat'].includes(waveState.phase));
     const modifiers = formation.preview?.modifiers ?? formation.modifiers;
     this.elements.spreadStrength.textContent = `RNG +${percent(modifiers.rangeBonus)}% · SIDE +${percent(modifiers.sideDamageBonus)}%${previewSuffix(formation.preview, ['rangeBonus', 'sideDamageBonus'])}`;
     this.elements.cohesionStrength.textContent = `RATE +${percent(modifiers.fireRateBonus)}% · GUN +${percent(modifiers.flagshipDamageBonus)}%${previewSuffix(formation.preview, ['fireRateBonus', 'flagshipDamageBonus'])}`;
@@ -127,14 +146,14 @@ export class HudController {
       const active = index === formation.activeLoadoutIndex;
       option.setAttribute('aria-pressed', String(active));
       option.classList.toggle('is-locked', locked);
-      option.disabled = locked || snapshot.status === 'gameOver'
-        || (!active && formation.cooldownRemaining > 0 && snapshot.waveIntermission <= 0);
+      option.disabled = locked || !formationEditable
+        || (!active && formation.cooldownRemaining > 0 && waveState.phase === 'combat');
       option.setAttribute('aria-label', locked
         ? `Formation loadout ${index + 1}, locked by Command Network`
         : `Activate formation loadout ${index + 1}${active ? ', currently active' : ''}`);
     }
-    this.elements.templatePicker.disabled = snapshot.status === 'gameOver'
-      || (formation.cooldownRemaining > 0 && snapshot.waveIntermission <= 0);
+    this.elements.templatePicker.disabled = !formationEditable
+      || (formation.cooldownRemaining > 0 && waveState.phase === 'combat');
     if (snapshot.status === 'gameOver') {
       this.elements.formationState.textContent = 'Run ended · formation saved';
     } else if (formation.preview) {
@@ -143,10 +162,53 @@ export class HudController {
         : `Invalid: ${formation.preview.reason === 'overlap' ? 'ships need 6 units' : 'outside fleet zone'}`;
     } else if (formation.isTransitioning) {
       this.elements.formationState.textContent = `${formation.movingShips.length} ship${formation.movingShips.length === 1 ? '' : 's'} maneuvering`;
-    } else if (formation.cooldownRemaining > 0 && snapshot.waveIntermission <= 0) {
+    } else if (waveState.phase === 'deployment') {
+      this.elements.formationState.textContent = `${waveState.enemyFormationName} sighted · position fleet`;
+    } else if (waveState.phase === 'approach') {
+      this.elements.formationState.textContent = 'Fleets closing · weapons held';
+    } else if (waveState.phase === 'extraction') {
+      this.elements.formationState.textContent = 'Flagship advancing · breakthrough';
+    } else if (waveState.phase === 'intermission') {
+      this.elements.formationState.textContent = 'Sector crossed · next contact incoming';
+    } else if (formation.cooldownRemaining > 0 && waveState.phase === 'combat') {
       this.elements.formationState.textContent = `Loadout link ${formation.cooldownRemaining.toFixed(1)}s`;
+    } else if (waveState.canAdvance) {
+      this.elements.formationState.textContent = 'Flagship path clear · advance or keep fighting';
     } else {
       this.elements.formationState.textContent = `Drag a ship to edit L${formation.activeLoadoutIndex + 1}`;
+    }
+
+    const showIntel = snapshot.status === 'running'
+      && ['deployment', 'approach'].includes(waveState.phase);
+    this.elements.waveIntel.hidden = !showIntel;
+    if (showIntel) {
+      this.elements.enemyFormationName.textContent = waveState.enemyFormationName ?? 'Unknown';
+      this.elements.wavePhaseLabel.textContent = waveState.phase === 'deployment'
+        ? 'Position your fleet'
+        : 'Fleets advancing';
+    }
+
+    if (waveState.canReady) {
+      this.waveActionMode = 'ready';
+      this.elements.waveAction.dataset.mode = 'ready';
+      this.elements.waveAction.hidden = false;
+      this.elements.waveActionKicker.textContent = `${waveState.enemyFormationName} detected`;
+      this.elements.waveActionLabel.textContent = 'Ready';
+      this.elements.waveActionHint.textContent = 'Press when your fleet is positioned.';
+      this.elements.waveActionButton.setAttribute('aria-label', 'Ready formation and advance both fleets');
+    } else if (waveState.canAdvance) {
+      this.waveActionMode = 'advance';
+      this.elements.waveAction.dataset.mode = 'advance';
+      this.elements.waveAction.hidden = false;
+      this.elements.waveActionKicker.textContent = 'Flagship path clear';
+      this.elements.waveActionLabel.textContent = `Advance to wave ${snapshot.wave + 1}`;
+      this.elements.waveActionHint.textContent = waveState.remainingEnemies > 0
+        ? `${waveState.remainingEnemies} contact${waveState.remainingEnemies === 1 ? '' : 's'} remain · keep fighting for salvage`
+        : 'All contacts destroyed · secure the breakthrough';
+      this.elements.waveActionButton.setAttribute('aria-label', `Advance flagship and complete wave ${snapshot.wave}`);
+    } else {
+      this.waveActionMode = null;
+      this.elements.waveAction.hidden = true;
     }
 
     const edgeStacks = snapshot.tacticalEdge.stacks;
@@ -156,7 +218,7 @@ export class HudController {
     this.lastSnapshot = snapshot;
     if (!this.elements.shopOverlay.hidden) this.renderUpgrades(snapshot);
     const boss = snapshot.enemies.find((enemy) => enemy.boss);
-    this.elements.bossStatus.hidden = !boss;
+    this.elements.bossStatus.hidden = !boss || ['deployment', 'approach'].includes(waveState.phase);
     if (boss) {
       const healthRatio = Math.max(0, Math.min(1, boss.health / boss.maxHealth));
       const healthPercent = Math.round(healthRatio * 100);
@@ -178,9 +240,20 @@ export class HudController {
         this.setRunningState();
         this.beginOnboarding();
       } else if (event.type === 'waveStarted') {
-        this.showMessage(`Wave ${event.wave} // ${event.enemyCount} contacts`, 1.3);
+        this.showMessage(`Wave ${event.wave} // ${event.formationName} formation revealed`, 1.8);
+      } else if (event.type === 'fleetsAdvancing') {
+        this.showMessage('Formation committed // fleets advancing', 1.4);
+        this.advanceOnboarding('ready');
+      } else if (event.type === 'fleetsEngaged') {
+        this.showMessage('Contact range // weapons free', 1.4);
+      } else if (event.type === 'flagshipPathCleared') {
+        this.showMessage('Flagship path clear // advance or keep fighting', 1.8);
+        this.advanceOnboarding('path');
+      } else if (event.type === 'flagshipAdvanceStarted') {
+        this.showMessage('Flagship advancing // breakthrough', 1.5);
+        this.finishOnboarding();
       } else if (event.type === 'waveCleared') {
-        this.showMessage(`Sector clear // free loadout changes // +${event.reward} salvage`, 1.6);
+        this.showMessage(`Breakthrough secured // +${event.reward} salvage`, 1.6);
       } else if (event.type === 'formationShipMoved') {
         this.showMessage('Formation saved // maneuvering', 1.1);
         this.advanceOnboarding('formation');
@@ -279,23 +352,21 @@ export class HudController {
   beginOnboarding() {
     if (this.onboardingComplete) return;
     this.onboardingStage = 1;
-    this.elements.coachmarkTitle.textContent = 'Shape the fleet';
-    this.elements.coachmarkDetail.textContent = 'Drag any ship in the lower quarter. Slots snap to the command grid and save immediately.';
+    this.elements.coachmarkTitle.textContent = 'Read, then deploy';
+    this.elements.coachmarkDetail.textContent = 'Study the revealed enemy formation, position your ships, then press Ready at center screen.';
     this.elements.coachmark.hidden = false;
   }
 
   advanceOnboarding(action) {
     if (this.onboardingComplete) return;
-    if (action === 'formation' && this.onboardingStage <= 1) {
+    if (action === 'ready' && this.onboardingStage <= 1) {
       this.onboardingStage = 2;
-      this.elements.coachmarkTitle.textContent = 'Read the warning';
-      this.elements.coachmarkDetail.textContent = 'Move every ship clear of blast circles and firing lanes to earn Tactical Edge.';
-    } else if (action === 'flagship' && this.onboardingStage >= 2) {
+      this.elements.coachmarkTitle.textContent = 'Fight the contact';
+      this.elements.coachmarkDetail.textContent = 'Weapons activate when both fleets stop. Drag ships clear of warnings and aim the flagship gun.';
+    } else if (action === 'path' && this.onboardingStage >= 2) {
       this.onboardingStage = 3;
-      this.elements.coachmarkTitle.textContent = 'Spend the edge';
-      this.elements.coachmarkDetail.textContent = 'Your next flagship burst consumes all Edge for damage and critical chance.';
-      window.clearTimeout(this.coachTimer);
-      this.coachTimer = window.setTimeout(() => this.finishOnboarding(), 3000);
+      this.elements.coachmarkTitle.textContent = 'Choose the payout';
+      this.elements.coachmarkDetail.textContent = 'Advance now to win the wave, or leave the lane open and destroy more contacts for salvage.';
     }
   }
 

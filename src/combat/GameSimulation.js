@@ -4,15 +4,18 @@ import {
   FLEET,
   FLAGSHIP_GUN,
   FORMATION_EDITOR,
+  FORMATIONS,
+  FORMATION_ORDER,
   SIMULATION,
   TACTICAL_EDGE,
   TELEGRAPH_ATTACKS,
+  WAVE_FLOW,
   WAVES,
   getEnemyStats,
   getWaveEnemyCount,
 } from '../config/balance.js';
 import { RunProgression } from '../progression/RunProgression.js';
-import { FormationSystem } from '../formations/FormationSystem.js';
+import { FormationSystem, getStarterTemplatePositions } from '../formations/FormationSystem.js';
 import {
   BOSS,
   ELITE,
@@ -53,6 +56,23 @@ function normalizedVelocity(from, to, speed) {
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy) || 1;
   return { vx: (dx / length) * speed, vy: (dy / length) * speed };
+}
+
+function moveTowards(entity, target, speed, deltaSeconds) {
+  const dx = target.x - entity.x;
+  const dy = target.y - entity.y;
+  const remaining = Math.hypot(dx, dy);
+  if (remaining <= WAVE_FLOW.arrivalTolerance) {
+    entity.x = target.x;
+    entity.y = target.y;
+    entity.moving = false;
+    return true;
+  }
+  const step = Math.min(remaining, speed * deltaSeconds);
+  entity.x += (dx / remaining) * step;
+  entity.y += (dy / remaining) * step;
+  entity.moving = step < remaining;
+  return step >= remaining;
 }
 
 function rayExitDistance(origin, direction, arena) {
@@ -102,8 +122,12 @@ export class GameSimulation {
     this.suspended = false;
     this.elapsed = 0;
     this.wave = 0;
+    this.wavePhase = 'idle';
     this.waveIntermission = 0;
     this.waveResolved = false;
+    this.enemyFormationId = null;
+    this.advanceAvailable = false;
+    this.flagshipPathBlockerIds = [];
     this.flagshipGunEnergy = FLAGSHIP_GUN.firingDuration;
     this.flagshipGunFiring = false;
     this.flagshipGunManualControl = false;
@@ -116,6 +140,7 @@ export class GameSimulation {
     this.formationSystem.cooldownRemaining = 0;
     this.formationSystem.movingSlots.clear();
     this.formationSystem.dragState = null;
+    this.formationSystem.setWorldOffset(0, 0);
     this.friendlies = this.createFleet();
     this.enemies = [];
     this.projectiles = [];
@@ -168,30 +193,54 @@ export class GameSimulation {
       targetX: 0,
       targetY: ARENA.commandY,
       moving: false,
+      dashing: false,
       alive: true,
     };
   }
 
+  getEnemyFormationPositions(templateId, count) {
+    const positionCount = Math.max(WAVE_FLOW.formationRevealMinimumSlots, count);
+    const template = getStarterTemplatePositions(templateId, positionCount);
+    const slotPriority = [3, 2, 4, 1, 5, 0, 6];
+    const selected = count < WAVE_FLOW.formationRevealMinimumSlots
+      ? slotPriority.slice(0, count).map((slot) => template.find((position) => position.slot === slot))
+      : template.slice(0, count);
+    const maximumTemplateX = Math.max(1, ...selected.map(({ x }) => Math.abs(x)));
+    const horizontalScale = Math.min(
+      1,
+      (this.arena.maxX - WAVE_FLOW.formationHorizontalMargin) / maximumTemplateX,
+    );
+    return selected.map(({ x, y }) => ({
+      x: x * horizontalScale,
+      y: -y,
+    }));
+  }
+
   beginNextWave() {
     this.wave += 1;
+    this.wavePhase = 'deployment';
     this.waveResolved = false;
     this.waveIntermission = 0;
+    this.advanceAvailable = false;
+    this.flagshipPathBlockerIds = [];
+    this.cancelFlagshipFire('wave-deployment');
+    this.projectiles = [];
     this.telegraphs = [];
+    this.formationSystem.setWorldOffset(0, 0);
+    this.formationSystem.applyInitialPositions(this.friendlies);
+    for (const ship of this.friendlies) ship.dashing = false;
     const stats = getEnemyStats(this.wave);
     const bossWave = isBossWave(this.wave);
     const count = bossWave ? 3 : getWaveEnemyCount(this.wave);
-    const columns = Math.min(6, count);
-    const laneHalfWidth = Math.max(20, Math.min(this.arena.maxX * 0.8, 84));
-    const spacing = Math.min(28, (laneHalfWidth * 2) / Math.max(1, columns - 1));
+    this.enemyFormationId = FORMATION_ORDER[Math.min(
+      FORMATION_ORDER.length - 1,
+      Math.floor(this.random() * FORMATION_ORDER.length),
+    )];
+    const enemyPositions = this.getEnemyFormationPositions(this.enemyFormationId, count);
 
     const availableTypes = getAvailableEnemyTypes(this.wave);
     this.enemies = Array.from({ length: count }, (_, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const rowCount = Math.min(columns, count - row * columns);
-      const rowWidth = (rowCount - 1) * spacing;
-      const x = column < rowCount ? -rowWidth / 2 + column * spacing : 0;
-      const yBand = WAVES.spawnTopMax - row * 12;
+      const position = enemyPositions[index];
 
       if (bossWave && index === 0) {
         const tier = Math.max(0, Math.floor(this.wave / BOSS.everyWaves) - 1);
@@ -199,7 +248,9 @@ export class GameSimulation {
         return {
           id: `enemy-${this.nextId++}`,
           faction: 'enemy', role: 'boss', type: 'boss', boss: true, elite: false,
-          x: 0, y: WAVES.spawnTopMax - 4, originX: 0, phase: this.random() * TAU, drift: 2.2,
+          x: position.x, y: position.y, originX: position.x,
+          targetX: position.x, targetY: position.y - WAVE_FLOW.enemyAdvanceDistance,
+          moving: false, phase: this.random() * TAU, drift: 2.2,
           health, maxHealth: health, speed: BOSS.speed + tier * 0.06,
           damage: Math.round(BOSS.damage * BOSS.damageGrowth ** tier),
           fireInterval: BOSS.fireInterval, fireCooldown: 1.15,
@@ -229,9 +280,12 @@ export class GameSimulation {
         type: typeId,
         boss: false,
         elite,
-        x,
-        y: clamp(yBand + (this.random() - 0.5) * 3, WAVES.spawnTopMin, WAVES.spawnTopMax),
-        originX: x,
+        x: position.x,
+        y: position.y,
+        originX: position.x,
+        targetX: position.x,
+        targetY: position.y - WAVE_FLOW.enemyAdvanceDistance,
+        moving: false,
         phase: this.random() * TAU,
         drift: type.drift * (1.2 + this.random() * 1.6),
         health: Math.round(stats.maxHealth * type.health * eliteHealth),
@@ -256,10 +310,62 @@ export class GameSimulation {
     this.emit('waveStarted', {
       wave: this.wave,
       enemyCount: count,
+      formationId: this.enemyFormationId,
+      formationName: FORMATIONS[this.enemyFormationId].name,
       enemyTypes: bossWave ? ['boss', 'skirmisher', 'artillery'] : availableTypes,
       isBoss: bossWave,
     });
+    this.emit('enemyFormationRevealed', {
+      wave: this.wave,
+      formationId: this.enemyFormationId,
+      formationName: FORMATIONS[this.enemyFormationId].name,
+      enemyCount: count,
+    });
     if (bossWave) this.emit('bossWaveStarted', { wave: this.wave, name: BOSS.name });
+  }
+
+  readyForBattle() {
+    if (this.status !== 'running' || this.wavePhase !== 'deployment') {
+      return { started: false, reason: 'inactive' };
+    }
+    if (this.formationSystem.dragState) this.commitShipDrag({ cancelled: true });
+    this.wavePhase = 'approach';
+    this.formationSystem.setWorldOffset(0, WAVE_FLOW.friendlyAdvanceDistance);
+    const friendlyPaths = this.formationSystem.reflow(this.friendlies);
+    for (const enemy of this.enemies) enemy.moving = true;
+    this.emit('fleetsAdvancing', {
+      wave: this.wave,
+      formationId: this.enemyFormationId,
+      friendlyPaths,
+      enemyPaths: this.enemies.map((enemy) => ({
+        shipId: enemy.id,
+        from: { x: enemy.x, y: enemy.y },
+        to: { x: enemy.targetX, y: enemy.targetY },
+      })),
+    });
+    return { started: true };
+  }
+
+  updateFleetApproach(dt) {
+    let enemiesArrived = true;
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      const arrived = moveTowards(
+        enemy,
+        { x: enemy.targetX, y: enemy.targetY },
+        WAVE_FLOW.enemyApproachSpeed,
+        dt,
+      );
+      enemiesArrived = enemiesArrived && arrived;
+    }
+    if (!enemiesArrived || this.formationSystem.isTransitioning) return;
+    this.wavePhase = 'combat';
+    for (const enemy of this.enemies) {
+      enemy.originX = enemy.x;
+      enemy.moving = false;
+    }
+    this.emit('fleetsEngaged', { wave: this.wave });
+    this.updateAdvanceAvailability();
   }
 
   update(deltaSeconds) {
@@ -273,16 +379,27 @@ export class GameSimulation {
     }
     if (this.status !== 'running') return;
     this.elapsed += dt;
-    this.updateFlagshipGun(dt);
-    this.formationSystem.update(this.friendlies, dt);
 
-    if (this.waveResolved) {
-      this.cancelFlagshipFire('wave-cleared');
+    if (this.wavePhase === 'intermission') {
       this.waveIntermission -= dt;
-      this.updateProjectiles(dt);
       if (this.waveIntermission <= 0) this.beginNextWave();
       return;
     }
+
+    if (this.wavePhase === 'extraction') {
+      this.updateFlagshipDash(dt);
+      return;
+    }
+
+    this.updateFlagshipGun(dt);
+    this.formationSystem.update(this.friendlies, dt);
+
+    if (this.wavePhase === 'deployment') return;
+    if (this.wavePhase === 'approach') {
+      this.updateFleetApproach(dt);
+      return;
+    }
+    if (this.wavePhase !== 'combat') return;
 
     this.updateFriendlies(dt);
     this.updateEnemies(dt);
@@ -315,7 +432,6 @@ export class GameSimulation {
   }
 
   updateEnemies(dt) {
-    const command = this.getCommandShip();
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
 
@@ -325,24 +441,14 @@ export class GameSimulation {
         if (before > 0 && enemy.exposedRemaining === 0) this.emit('bossBarrierRestored', { id: enemy.id });
       }
 
-      enemy.y -= enemy.speed * dt;
       enemy.x = clamp(
         enemy.originX + Math.sin(this.elapsed * 0.72 + enemy.phase) * enemy.drift,
         this.arena.minX + 3,
         this.arena.maxX - 3,
       );
 
-      if (enemy.y <= ARENA.defenseLineY) {
-        enemy.alive = false;
-        this.emit('breach', { x: enemy.x, y: enemy.y });
-        if (command?.alive) {
-          this.damageEntity(command, enemy.damage * ENEMIES.breachDamageMultiplier, 'breach');
-        }
-        continue;
-      }
-
       enemy.fireCooldown -= dt;
-      if (enemy.majorAttack && enemy.y <= ENEMIES.fireThresholdY) {
+      if (enemy.majorAttack) {
         enemy.majorCooldown -= dt;
         if (enemy.majorCooldown <= 0) {
           this.beginEnemyMajorAttack(enemy);
@@ -350,7 +456,7 @@ export class GameSimulation {
             + this.random() * TELEGRAPH_ATTACKS.repeatJitter;
         }
       }
-      if (enemy.y > ENEMIES.fireThresholdY || enemy.fireCooldown > 0) continue;
+      if (enemy.fireCooldown > 0) continue;
 
       const target = this.pickEnemyTarget(enemy);
       if (!target) continue;
@@ -453,7 +559,7 @@ export class GameSimulation {
         faction: 'enemy',
       });
     }
-    if (hitTargets.length === 0 && this.status === 'running' && !this.waveResolved) {
+    if (hitTargets.length === 0 && this.status === 'running' && this.wavePhase === 'combat') {
       this.grantTacticalEdge(telegraph);
     }
   }
@@ -524,7 +630,7 @@ export class GameSimulation {
       y: clamp(y, this.arena.minY, this.arena.maxY),
     };
 
-    if (this.status !== 'running' || this.suspended || this.waveResolved) {
+    if (this.status !== 'running' || this.suspended || this.wavePhase !== 'combat') {
       return { firing: false, reason: 'inactive', target: aim };
     }
 
@@ -613,9 +719,9 @@ export class GameSimulation {
       while (this.flagshipGunPulseAccumulator >= FLAGSHIP_GUN.pulseInterval) {
         this.flagshipGunPulseAccumulator -= FLAGSHIP_GUN.pulseInterval;
         this.fireAndConsumeFlagshipGunPulse();
-        if (!this.flagshipGunFiring || this.waveResolved || this.status !== 'running') break;
+        if (!this.flagshipGunFiring || this.wavePhase !== 'combat' || this.status !== 'running') break;
       }
-      if (this.flagshipGunFiring && (this.waveResolved || this.status !== 'running')) {
+      if (this.flagshipGunFiring && (this.wavePhase !== 'combat' || this.status !== 'running')) {
         this.cancelFlagshipFire(this.flagshipGunEnergy <= 0 ? 'depleted' : 'inactive');
       }
       return;
@@ -634,7 +740,9 @@ export class GameSimulation {
       return;
     }
 
-    if (this.progression.upgrades.automatedGunnery && this.status === 'running' && !this.waveResolved) {
+    if (this.progression.upgrades.automatedGunnery
+      && this.status === 'running'
+      && this.wavePhase === 'combat') {
       const target = this.findAutomaticGunTarget();
       if (target) this.beginFlagshipFire(target.x, target.y, { automatic: true });
     }
@@ -686,7 +794,10 @@ export class GameSimulation {
       ? { x: aimDx / aimLength, y: aimDy / aimLength }
       : { x: 0, y: 1 };
     const boundaryDistance = rayExitDistance(source, direction, this.arena);
-    let shotDistance = boundaryDistance;
+    const maximumGunRange = FLEET.effectiveRange
+      * this.formationSystem.getRangeMultiplier(this.friendlies);
+    const maximumShotDistance = Math.min(boundaryDistance, maximumGunRange);
+    let shotDistance = maximumShotDistance;
     let firstHit = null;
 
     for (const enemy of this.enemies) {
@@ -694,7 +805,7 @@ export class GameSimulation {
       const relativeX = enemy.x - source.x;
       const relativeY = enemy.y - source.y;
       const distanceAlongRay = relativeX * direction.x + relativeY * direction.y;
-      if (distanceAlongRay <= 0 || distanceAlongRay > boundaryDistance) continue;
+      if (distanceAlongRay <= 0 || distanceAlongRay > maximumShotDistance) continue;
 
       const perpendicularDistance = Math.abs(relativeX * direction.y - relativeY * direction.x);
       const contactRadius = enemyHullRadius(enemy) + shotHalfWidth;
@@ -751,10 +862,11 @@ export class GameSimulation {
   }
 
   changeFormation(formationId) {
-    if (!['ready', 'running', 'paused'].includes(this.status)) {
+    if (!this.canEditFormation()) {
       return { changed: false, reason: 'inactive' };
     }
-    const ignoreCooldown = this.status === 'ready' || this.waveResolved;
+    const ignoreCooldown = this.status === 'ready'
+      || ['deployment', 'intermission'].includes(this.wavePhase);
     const result = this.formationSystem.applyTemplate(formationId, this.friendlies, {
       ignoreCooldown,
     });
@@ -770,10 +882,11 @@ export class GameSimulation {
   }
 
   activateFormationLoadout(index) {
-    if (!['ready', 'running', 'paused'].includes(this.status)) {
+    if (!this.canEditFormation()) {
       return { changed: false, reason: 'inactive' };
     }
-    const ignoreCooldown = this.status === 'ready' || this.waveResolved;
+    const ignoreCooldown = this.status === 'ready'
+      || ['deployment', 'intermission'].includes(this.wavePhase);
     const result = this.formationSystem.activateLoadout(index, this.friendlies, { ignoreCooldown });
     if (result.changed) {
       this.emit('loadoutActivated', {
@@ -790,12 +903,18 @@ export class GameSimulation {
     return this.changeFormation(templateId);
   }
 
+  canEditFormation() {
+    if (this.status === 'ready') return true;
+    return ['running', 'paused'].includes(this.status)
+      && ['deployment', 'combat'].includes(this.wavePhase);
+  }
+
   isFormationEditingPoint(y) {
-    return this.formationSystem.isFleetZonePoint(y);
+    return this.canEditFormation() && this.formationSystem.isFleetZonePoint(y);
   }
 
   beginShipDrag(x, y) {
-    if (!['running', 'ready'].includes(this.status) || this.suspended) {
+    if (!this.canEditFormation() || this.status === 'paused' || this.suspended) {
       return { dragging: false, reason: 'inactive' };
     }
     const candidates = this.friendlies
@@ -982,20 +1101,118 @@ export class GameSimulation {
   }
 
   resolveWaveIfNeeded() {
-    if (this.status !== 'running' || this.waveResolved || this.enemies.some((enemy) => enemy.alive)) return;
-    this.waveResolved = true;
-    this.waveIntermission = WAVES.intermission;
+    if (this.status !== 'running' || this.wavePhase !== 'combat') return;
+    this.updateAdvanceAvailability();
+  }
+
+  getFlagshipPathBlockers() {
+    const command = this.getCommandShip();
+    if (!command?.alive || this.wavePhase !== 'combat') return [];
+    return this.enemies.filter((enemy) => enemy.alive
+      && enemy.y > command.y
+      && Math.abs(enemy.x - command.x)
+        <= enemyHullRadius(enemy) + WAVE_FLOW.flagshipPathHalfWidth);
+  }
+
+  updateAdvanceAvailability() {
+    if (this.wavePhase !== 'combat') {
+      this.advanceAvailable = false;
+      this.flagshipPathBlockerIds = [];
+      return false;
+    }
+    const blockers = this.getFlagshipPathBlockers();
+    const available = blockers.length === 0;
+    const changed = available !== this.advanceAvailable;
+    this.advanceAvailable = available;
+    this.flagshipPathBlockerIds = blockers.map(({ id }) => id);
+    if (changed) {
+      this.emit(available ? 'flagshipPathCleared' : 'flagshipPathBlocked', {
+        wave: this.wave,
+        blockerIds: [...this.flagshipPathBlockerIds],
+        remainingEnemies: this.enemies.filter((enemy) => enemy.alive).length,
+      });
+    }
+    return available;
+  }
+
+  advanceToNextWave() {
+    if (this.status !== 'running' || this.wavePhase !== 'combat') {
+      return { advancing: false, reason: 'inactive' };
+    }
+    if (!this.updateAdvanceAvailability()) {
+      return {
+        advancing: false,
+        reason: 'blocked',
+        blockerIds: [...this.flagshipPathBlockerIds],
+      };
+    }
+    const command = this.getCommandShip();
+    if (!command) return { advancing: false, reason: 'no-flagship' };
+    this.cancelFlagshipFire('advancing');
     for (const telegraph of this.telegraphs) this.emit('telegraphCancelled', { id: telegraph.id });
+    this.telegraphs = [];
+    this.projectiles = [];
+    this.wavePhase = 'extraction';
+    this.advanceAvailable = false;
+    command.dashing = true;
+    command.moving = true;
+    this.flagshipDashTarget = {
+      x: command.x,
+      y: this.arena.maxY + WAVE_FLOW.flagshipExitPadding,
+    };
+    this.emit('flagshipAdvanceStarted', {
+      wave: this.wave,
+      remainingEnemies: this.enemies.filter((enemy) => enemy.alive).length,
+      path: {
+        shipId: command.id,
+        from: { x: command.x, y: command.y },
+        to: { ...this.flagshipDashTarget },
+      },
+    });
+    return { advancing: true, remainingEnemies: this.enemies.length };
+  }
+
+  updateFlagshipDash(dt) {
+    const command = this.getCommandShip();
+    if (!command || !this.flagshipDashTarget) return;
+    const arrived = moveTowards(
+      command,
+      this.flagshipDashTarget,
+      WAVE_FLOW.flagshipDashSpeed,
+      dt,
+    );
+    if (!arrived) return;
+    command.dashing = false;
+    this.completeWave();
+  }
+
+  completeWave() {
+    if (this.waveResolved) return;
+    const remainingEnemies = this.enemies.filter((enemy) => enemy.alive).length;
+    this.waveResolved = true;
+    this.wavePhase = 'intermission';
+    this.waveIntermission = WAVES.intermission;
+    this.flagshipDashTarget = null;
+    this.advanceAvailable = false;
+    this.flagshipPathBlockerIds = [];
+    this.enemies = [];
+    this.projectiles = [];
     this.telegraphs = [];
     const reward = WAVES.clearRewardBase + this.wave * 3;
     const creditedReward = this.progression.recordWaveCleared(this.wave, reward);
-    this.emit('waveCleared', { wave: this.wave, reward: creditedReward });
+    this.emit('flagshipAdvanceCompleted', { wave: this.wave });
+    this.emit('waveCleared', {
+      wave: this.wave,
+      reward: creditedReward,
+      remainingEnemies,
+    });
   }
 
   endRun() {
     if (this.status === 'gameOver') return;
     this.cancelFlagshipFire('game-over');
     this.status = 'gameOver';
+    this.wavePhase = 'gameOver';
     this.projectiles = [];
     this.telegraphs = [];
     this.tacticalEdgeStacks = 0;
@@ -1056,8 +1273,12 @@ export class GameSimulation {
   }
 
   findAutomaticGunTarget() {
+    const command = this.getCommandShip();
+    if (!command?.alive) return null;
+    const range = FLEET.effectiveRange
+      * this.formationSystem.getRangeMultiplier(this.friendlies);
     return this.enemies
-      .filter((enemy) => enemy.alive)
+      .filter((enemy) => enemy.alive && distanceSquared(command, enemy) <= range * range)
       .sort((left, right) => {
         const priority = (enemy) => enemy.boss ? 0 : enemy.elite ? 1 : enemy.type === 'artillery' ? 2 : 3;
         return priority(left) - priority(right) || left.y - right.y;
@@ -1065,11 +1286,13 @@ export class GameSimulation {
   }
 
   pickEnemyTarget(enemy) {
-    const alive = this.friendlies.filter((ship) => ship.alive);
+    const maximumDistance = ENEMIES.effectiveRange ** 2;
+    const alive = this.friendlies.filter((ship) => ship.alive
+      && distanceSquared(enemy, ship) <= maximumDistance);
     if (alive.length === 0) return null;
     const command = alive.find((ship) => ship.role === 'command');
     if (command && this.random() < 0.38) return command;
-    return this.findNearest(enemy, alive, 180) ?? command;
+    return this.findNearest(enemy, alive, ENEMIES.effectiveRange) ?? command;
   }
 
   getCommandShip() {
@@ -1111,6 +1334,20 @@ export class GameSimulation {
       elapsed: this.elapsed,
       wave: this.wave,
       waveIntermission: this.waveIntermission,
+      waveState: {
+        phase: this.wavePhase,
+        enemyFormationId: this.enemyFormationId,
+        enemyFormationName: this.enemyFormationId
+          ? FORMATIONS[this.enemyFormationId]?.name ?? this.enemyFormationId
+          : null,
+        canReady: this.status === 'running' && this.wavePhase === 'deployment',
+        canAdvance: this.status === 'running'
+          && this.wavePhase === 'combat'
+          && this.advanceAvailable,
+        pathBlockerIds: [...this.flagshipPathBlockerIds],
+        remainingEnemies: this.enemies.filter((enemy) => enemy.alive).length,
+        weaponRange: FLEET.effectiveRange,
+      },
       flagshipGun: {
         energy: this.flagshipGunEnergy,
         energyRatio: this.getFlagshipGunEnergyRatio(),
@@ -1170,6 +1407,7 @@ export class GameSimulation {
     for (const enemy of this.enemies) {
       enemy.originX = clamp(enemy.originX, this.arena.minX + 3, this.arena.maxX - 3);
       enemy.x = clamp(enemy.x, this.arena.minX + 3, this.arena.maxX - 3);
+      enemy.targetX = clamp(enemy.targetX ?? enemy.x, this.arena.minX + 3, this.arena.maxX - 3);
     }
     this.flagshipGunAim.x = clamp(this.flagshipGunAim.x, this.arena.minX, this.arena.maxX);
   }

@@ -109,6 +109,7 @@ export class FormationSystem {
     this.movingSlots = new Set();
     this.dragState = null;
     this.arena = { ...ARENA };
+    this.worldOffset = { x: 0, y: 0 };
   }
 
   get unlockedLoadoutCount() {
@@ -146,6 +147,27 @@ export class FormationSystem {
   setArena(arena) {
     this.arena = { ...this.arena, ...arena };
     this.fitLoadoutsToArena();
+  }
+
+  setWorldOffset(x = 0, y = 0) {
+    this.worldOffset = {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    };
+  }
+
+  toWorldPoint(point) {
+    return {
+      x: point.x + this.worldOffset.x,
+      y: point.y + this.worldOffset.y,
+    };
+  }
+
+  toLocalPoint(point) {
+    return {
+      x: point.x - this.worldOffset.x,
+      y: point.y - this.worldOffset.y,
+    };
   }
 
   fitLoadoutsToArena() {
@@ -190,7 +212,9 @@ export class FormationSystem {
   }
 
   isFleetZonePoint(y) {
-    return y <= this.arena.minY + this.arena.height * FORMATION_EDITOR.fleetZoneTopRatio;
+    const bounds = this.getPlacementBounds();
+    return y >= bounds.minY + this.worldOffset.y
+      && y <= bounds.maxY + this.worldOffset.y;
   }
 
   snapPoint(x, y) {
@@ -235,7 +259,7 @@ export class FormationSystem {
   getPositionsForFleet(friendlies, loadout = this.activeLoadout) {
     this.ensureFleetSlots(friendlies);
     const positions = slotMap(loadout.slots);
-    return friendlies.map((ship) => ({ ...positions.get(ship.slot) }));
+    return friendlies.map((ship) => this.toWorldPoint(positions.get(ship.slot)));
   }
 
   applyInitialPositions(friendlies) {
@@ -299,13 +323,17 @@ export class FormationSystem {
   }
 
   previewPlacement(slot, x, y, friendlies) {
-    const candidate = this.snapPoint(x, y);
+    const loadoutCandidate = this.snapPoint(
+      x - this.worldOffset.x,
+      y - this.worldOffset.y,
+    );
+    const candidate = this.toWorldPoint(loadoutCandidate);
     const bounds = this.getPlacementBounds();
     const loadoutSlots = this.activeLoadout.slots;
-    const insideBounds = candidate.x >= bounds.minX && candidate.x <= bounds.maxX
-      && candidate.y >= bounds.minY && candidate.y <= bounds.maxY;
+    const insideBounds = loadoutCandidate.x >= bounds.minX && loadoutCandidate.x <= bounds.maxX
+      && loadoutCandidate.y >= bounds.minY && loadoutCandidate.y <= bounds.maxY;
     const separated = loadoutSlots.every((position) => position.slot === slot
-      || distance(position, candidate) >= FORMATION_EDITOR.minimumSeparation);
+      || distance(position, loadoutCandidate) >= FORMATION_EDITOR.minimumSeparation);
     const valid = insideBounds && separated;
     const positions = friendlies
       .filter((ship) => ship.alive !== false)
@@ -318,6 +346,7 @@ export class FormationSystem {
       slot,
       original: { ...loadoutSlots.find((position) => position.slot === slot) },
       candidate,
+      loadoutCandidate,
       valid,
       reason: !insideBounds ? 'outside-fleet-zone' : !separated ? 'overlap' : null,
       modifiers: previewModifiers,
@@ -332,12 +361,19 @@ export class FormationSystem {
     if (!preview?.valid) return { changed: false, reason: preview?.reason ?? 'no-drag', preview };
     const position = this.activeLoadout.slots.find((slot) => slot.slot === preview.slot);
     if (!position) return { changed: false, reason: 'unknown-slot', preview };
-    position.x = preview.candidate.x;
-    position.y = preview.candidate.y;
+    position.x = preview.loadoutCandidate.x;
+    position.y = preview.loadoutCandidate.y;
     this.activeLoadout.templateId = null;
     const ship = friendlies.find((candidate) => candidate.slot === preview.slot);
     const path = ship ? this.moveShip(ship, preview.candidate) : null;
-    return { changed: true, slot: preview.slot, position: { ...preview.candidate }, path, preview };
+    return {
+      changed: true,
+      slot: preview.slot,
+      position: { ...preview.loadoutCandidate },
+      worldPosition: { ...preview.candidate },
+      path,
+      preview,
+    };
   }
 
   cancelPlacement() {
@@ -477,7 +513,20 @@ export class FormationSystem {
       geometry: this.getGeometryMetrics(positions),
       modifiers,
       preview: this.dragState ? { ...this.dragState } : null,
-      placement: { bounds: this.getPlacementBounds(), gridSize: FORMATION_EDITOR.gridSize, minimumSeparation: FORMATION_EDITOR.minimumSeparation },
+      placement: {
+        bounds: (() => {
+          const bounds = this.getPlacementBounds();
+          return {
+            minX: bounds.minX + this.worldOffset.x,
+            maxX: bounds.maxX + this.worldOffset.x,
+            minY: bounds.minY + this.worldOffset.y,
+            maxY: bounds.maxY + this.worldOffset.y,
+          };
+        })(),
+        offset: { ...this.worldOffset },
+        gridSize: FORMATION_EDITOR.gridSize,
+        minimumSeparation: FORMATION_EDITOR.minimumSeparation,
+      },
       movingShips: friendlies.filter((ship) => ship.moving).map((ship) => ({
         id: ship.id,
         slot: ship.slot,
