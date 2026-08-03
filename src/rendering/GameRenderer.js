@@ -20,10 +20,11 @@ function makeShape(points) {
 function createMaterial(color, options = {}) {
   return new THREE.MeshStandardMaterial({
     color,
-    emissive: color,
+    emissive: options.emissive ?? color,
     emissiveIntensity: options.emissiveIntensity ?? RENDERING.material.emissiveIntensity,
-    metalness: RENDERING.material.metalness,
-    roughness: RENDERING.material.roughness,
+    metalness: options.metalness ?? RENDERING.material.metalness,
+    roughness: options.roughness ?? RENDERING.material.roughness,
+    flatShading: options.flatShading ?? false,
     transparent: options.transparent ?? false,
     opacity: options.opacity ?? 1,
     depthWrite: options.depthWrite ?? true,
@@ -77,14 +78,75 @@ export class GameRenderer {
   }
 
   createSharedResources() {
+    const hullOptions = {
+      emissiveIntensity: RENDERING.material.hullEmissiveIntensity,
+      metalness: RENDERING.material.hullMetalness,
+      roughness: RENDERING.material.hullRoughness,
+      flatShading: true,
+    };
+    const armorOptions = {
+      emissiveIntensity: RENDERING.material.armorEmissiveIntensity,
+      metalness: RENDERING.material.armorMetalness,
+      roughness: RENDERING.material.armorRoughness,
+      flatShading: true,
+    };
+    const glowMaterial = (color) => new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: RENDERING.material.engineGlowOpacity,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
     return {
-      friendlyMaterial: createMaterial(RENDER_COLORS.friendly),
+      friendlyMaterial: createMaterial(RENDER_COLORS.friendlyHull, {
+        ...hullOptions,
+        emissive: RENDER_COLORS.friendly,
+      }),
+      friendlyArmorMaterial: createMaterial(RENDER_COLORS.friendlyArmor, armorOptions),
       friendlyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendlyCore }),
-      commandMaterial: createMaterial(RENDER_COLORS.command, { emissiveIntensity: RENDERING.material.commandEmissiveIntensity }),
-      enemyMaterial: createMaterial(RENDER_COLORS.enemy, { emissiveIntensity: RENDERING.material.enemyEmissiveIntensity }),
-      eliteMaterial: createMaterial(RENDER_COLORS.elite, { emissiveIntensity: RENDERING.material.eliteEmissiveIntensity }),
-      bossMaterial: createMaterial(RENDER_COLORS.boss, { emissiveIntensity: RENDERING.material.bossEmissiveIntensity }),
+      friendlyAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.friendly }),
+      commandMaterial: createMaterial(RENDER_COLORS.commandHull, {
+        ...hullOptions,
+        emissive: RENDER_COLORS.command,
+        emissiveIntensity: RENDERING.material.commandHullEmissiveIntensity,
+      }),
+      commandArmorMaterial: createMaterial(RENDER_COLORS.commandArmor, armorOptions),
+      commandAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.command }),
+      enemyMaterial: createMaterial(RENDER_COLORS.enemyHull, {
+        ...hullOptions,
+        emissive: RENDER_COLORS.enemy,
+      }),
+      enemyArmorMaterial: createMaterial(RENDER_COLORS.enemyArmor, armorOptions),
+      eliteMaterial: createMaterial(RENDER_COLORS.eliteHull, {
+        ...hullOptions,
+        emissive: RENDER_COLORS.elite,
+      }),
+      eliteArmorMaterial: createMaterial(RENDER_COLORS.eliteArmor, armorOptions),
+      eliteAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.elite }),
+      bossMaterial: createMaterial(RENDER_COLORS.bossHull, {
+        ...hullOptions,
+        emissive: RENDER_COLORS.boss,
+      }),
+      bossArmorMaterial: createMaterial(RENDER_COLORS.bossArmor, armorOptions),
+      bossAccentMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.boss }),
       enemyCoreMaterial: new THREE.MeshBasicMaterial({ color: RENDER_COLORS.enemyCore }),
+      canopyMaterial: createMaterial(RENDER_COLORS.canopy, {
+        emissive: RENDER_COLORS.friendlyCore,
+        emissiveIntensity: RENDERING.material.canopyEmissiveIntensity,
+        metalness: RENDERING.material.canopyMetalness,
+        roughness: RENDERING.material.canopyRoughness,
+      }),
+      enemyCanopyMaterial: createMaterial(RENDER_COLORS.enemyCanopy, {
+        emissive: RENDER_COLORS.enemyCore,
+        emissiveIntensity: RENDERING.material.canopyEmissiveIntensity,
+        metalness: RENDERING.material.canopyMetalness,
+        roughness: RENDERING.material.canopyRoughness,
+      }),
+      engineFriendlyMaterial: glowMaterial(RENDER_COLORS.engineFriendly),
+      engineCommandMaterial: glowMaterial(RENDER_COLORS.engineCommand),
+      engineEnemyMaterial: glowMaterial(RENDER_COLORS.engineEnemy),
+      engineEliteMaterial: glowMaterial(RENDER_COLORS.engineElite),
+      engineBossMaterial: glowMaterial(RENDER_COLORS.engineBoss),
       friendlyHaloMaterial: new THREE.MeshBasicMaterial({
         color: RENDER_COLORS.friendly,
         transparent: true,
@@ -129,6 +191,13 @@ export class GameRenderer {
       haloGeometry: new THREE.RingGeometry(...RENDERING.geometry.halo),
       ringGeometry: new THREE.RingGeometry(...RENDERING.geometry.impactRing),
       chargeNodeGeometry: new THREE.CircleGeometry(...RENDERING.geometry.chargeNode),
+      canopyGeometry: new THREE.SphereGeometry(
+        RENDERING.ships.canopyRadius,
+        ...RENDERING.ships.canopySegments,
+      ),
+      enginePodGeometry: new THREE.CapsuleGeometry(...RENDERING.ships.enginePod),
+      engineGlowGeometry: new THREE.CircleGeometry(...RENDERING.ships.engineGlow),
+      navLightGeometry: new THREE.CircleGeometry(...RENDERING.ships.navLight),
       pulsePlaneGeometry: new THREE.PlaneGeometry(1, 1),
     };
   }
@@ -367,108 +436,173 @@ export class GameRenderer {
     const command = entity.role === 'command';
     const scale = (command ? RENDERING.ships.commandScale : 1) * (entity.scale ?? 1);
 
+    const profileId = entity.boss ? 'boss' : friendly ? entity.role : entity.type;
+    const profile = RENDERING.ships.profiles[profileId]
+      ?? RENDERING.ships.profiles[friendly ? 'escort' : 'raider'];
+    const shapePoints = RENDERING.ships.shapes[profileId]
+      ?? RENDERING.ships.shapes[friendly ? 'escort' : 'raider'];
+    const hullExtrusion = friendly
+      ? RENDERING.ships.friendlyHullExtrusion
+      : RENDERING.ships.enemyHullExtrusion;
+    const palette = command
+      ? {
+          hull: this.shared.commandMaterial,
+          armor: this.shared.commandArmorMaterial,
+          accent: this.shared.commandAccentMaterial,
+          canopy: this.shared.canopyMaterial,
+          engine: this.shared.engineCommandMaterial,
+        }
+      : friendly
+        ? {
+            hull: this.shared.friendlyMaterial,
+            armor: this.shared.friendlyArmorMaterial,
+            accent: this.shared.friendlyAccentMaterial,
+            canopy: this.shared.canopyMaterial,
+            engine: this.shared.engineFriendlyMaterial,
+          }
+        : entity.boss
+          ? {
+              hull: this.shared.bossMaterial,
+              armor: this.shared.bossArmorMaterial,
+              accent: this.shared.bossAccentMaterial,
+              canopy: this.shared.enemyCanopyMaterial,
+              engine: this.shared.engineBossMaterial,
+            }
+          : entity.elite
+            ? {
+                hull: this.shared.eliteMaterial,
+                armor: this.shared.eliteArmorMaterial,
+                accent: this.shared.eliteAccentMaterial,
+                canopy: this.shared.enemyCanopyMaterial,
+                engine: this.shared.engineEliteMaterial,
+              }
+            : {
+                hull: this.shared.enemyMaterial,
+                armor: this.shared.enemyArmorMaterial,
+                accent: this.shared.enemyCoreMaterial,
+                canopy: this.shared.enemyCanopyMaterial,
+                engine: this.shared.engineEnemyMaterial,
+              };
+
+    const hull = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(
+        makeShape(shapePoints),
+        { ...hullExtrusion, bevelEnabled: true },
+      ),
+      palette.hull,
+    );
+    hull.position.z = RENDERING.ships.hullZ;
+    group.add(hull);
+
+    const dorsalArmor = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(
+        makeShape(shapePoints),
+        { ...RENDERING.ships.armorExtrusion, bevelEnabled: true },
+      ),
+      palette.armor,
+    );
+    dorsalArmor.scale.set(...profile.armorScale);
+    dorsalArmor.position.set(0, profile.armorY, RENDERING.ships.armorZ);
+    group.add(dorsalArmor);
+
+    for (const side of [-1, 1]) {
+      const sideArmor = new THREE.Mesh(
+        new THREE.BoxGeometry(...RENDERING.ships.sideArmorSize),
+        palette.armor,
+      );
+      sideArmor.scale.y = profile.sideArmorLength;
+      sideArmor.position.set(
+        side * profile.sideArmorX,
+        profile.sideArmorY,
+        RENDERING.ships.sideArmorZ,
+      );
+      sideArmor.rotation.z = side * profile.sideArmorAngle;
+      group.add(sideArmor);
+    }
+
+    const keel = new THREE.Mesh(
+      new THREE.BoxGeometry(...RENDERING.ships.keelSize),
+      palette.accent,
+    );
+    keel.scale.y = profile.keelLength;
+    keel.position.set(0, profile.keelY, RENDERING.ships.keelZ);
+    group.add(keel);
+
+    const canopy = new THREE.Mesh(this.shared.canopyGeometry, palette.canopy);
+    canopy.scale.set(...profile.cockpitScale);
+    canopy.position.set(0, profile.cockpitY, RENDERING.ships.canopyZ);
+    group.add(canopy);
+
+    const engineGlows = [];
+    for (const engineX of profile.engineX) {
+      const enginePod = new THREE.Mesh(this.shared.enginePodGeometry, this.shared.darkMaterial);
+      enginePod.position.set(engineX, profile.engineY, RENDERING.ships.enginePodZ);
+      group.add(enginePod);
+
+      const engineGlow = new THREE.Mesh(this.shared.engineGlowGeometry, palette.engine);
+      engineGlow.scale.set(...RENDERING.ships.engineGlowScale);
+      engineGlow.position.set(engineX, profile.engineGlowY, RENDERING.ships.engineGlowZ);
+      engineGlow.userData.baseScale = [...RENDERING.ships.engineGlowScale];
+      engineGlows.push(engineGlow);
+      group.add(engineGlow);
+    }
+
+    for (const side of [-1, 1]) {
+      const navLight = new THREE.Mesh(this.shared.navLightGeometry, palette.accent);
+      navLight.position.set(
+        side * profile.sideArmorX * RENDERING.ships.navLightXScale,
+        RENDERING.ships.navLightY,
+        RENDERING.ships.navLightZ,
+      );
+      group.add(navLight);
+    }
+
     let turret = null;
-    if (friendly) {
-      const friendlyShape = RENDERING.ships.shapes[entity.role] ?? RENDERING.ships.shapes.escort;
-      const hull = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(
-          makeShape(friendlyShape),
-          { ...RENDERING.ships.friendlyHullExtrusion, bevelEnabled: true },
+    if (command) {
+      turret = new THREE.Group();
+      const turretBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          RENDERING.ships.turret.baseRadius,
+          RENDERING.ships.turret.baseRadius,
+          RENDERING.ships.turret.baseHeight,
+          RENDERING.ships.turret.baseSegments,
         ),
-        command ? this.shared.commandMaterial : this.shared.friendlyMaterial,
+        palette.armor,
       );
-      hull.position.z = RENDERING.ships.hullZ;
-      group.add(hull);
-
-      const wingWidth = RENDERING.ships.wingWidths[entity.role] ?? RENDERING.ships.wingWidths.escort;
-      const wings = new THREE.Mesh(
-        new THREE.BoxGeometry(wingWidth, ...RENDERING.ships.wingSize),
-        this.shared.darkMaterial,
-      );
-      wings.position.set(...RENDERING.ships.wingPosition);
-      group.add(wings);
-
-      const core = new THREE.Mesh(
-        new THREE.OctahedronGeometry(
-          command ? RENDERING.ships.commandCoreRadius : RENDERING.ships.friendlyCoreRadius,
-          0,
-        ),
-        this.shared.friendlyCoreMaterial,
-      );
-      core.position.set(...RENDERING.ships.friendlyCorePosition);
-      group.add(core);
-
-      if (command) {
-        turret = new THREE.Group();
-        const turretBaseMaterial = new THREE.MeshBasicMaterial({
-          color: RENDER_COLORS.command,
-          transparent: true,
-          opacity: RENDERING.ships.turret.opacity,
-        });
-        turretBaseMaterial.userData.disposeWithShip = true;
-        const turretBase = new THREE.Mesh(
-          new THREE.CircleGeometry(
-            RENDERING.ships.turret.baseRadius,
-            RENDERING.ships.turret.baseSegments,
-          ),
-          turretBaseMaterial,
-        );
-        turretBase.position.z = RENDERING.ships.turret.baseZ;
-        const barrelMaterial = new THREE.MeshBasicMaterial({ color: RENDER_COLORS.commandBarrel });
-        barrelMaterial.userData.disposeWithShip = true;
-        const leftBarrel = new THREE.Mesh(
+      turretBase.rotation.x = Math.PI / 2;
+      turretBase.position.z = RENDERING.ships.turret.baseZ;
+      const barrels = [-1, 1].map((side) => {
+        const barrel = new THREE.Group();
+        const housing = new THREE.Mesh(
           new THREE.BoxGeometry(...RENDERING.ships.turret.barrelSize),
-          barrelMaterial,
-        );
-        const rightBarrel = new THREE.Mesh(
-          new THREE.BoxGeometry(...RENDERING.ships.turret.barrelSize),
-          barrelMaterial,
-        );
-        leftBarrel.position.set(
-          -RENDERING.ships.turret.barrelX,
-          RENDERING.ships.turret.barrelY,
-          RENDERING.ships.turret.barrelZ,
-        );
-        rightBarrel.position.set(
-          RENDERING.ships.turret.barrelX,
-          RENDERING.ships.turret.barrelY,
-          RENDERING.ships.turret.barrelZ,
-        );
-        turret.add(turretBase, leftBarrel, rightBarrel);
-        turret.userData.barrels = [leftBarrel, rightBarrel];
-        turret.userData.recoil = 0;
-        group.add(turret);
-      }
-    } else {
-      const enemyShape = entity.boss
-        ? RENDERING.ships.shapes.boss
-        : RENDERING.ships.shapes[entity.type] ?? RENDERING.ships.shapes.raider;
-      const hull = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(
-          makeShape(enemyShape),
-          { ...RENDERING.ships.enemyHullExtrusion, bevelEnabled: true },
-        ),
-        entity.boss
-          ? this.shared.bossMaterial
-          : entity.elite ? this.shared.eliteMaterial : this.shared.enemyMaterial,
-      );
-      hull.position.z = RENDERING.ships.hullZ;
-      group.add(hull);
-      const core = new THREE.Mesh(
-        new THREE.TetrahedronGeometry(RENDERING.ships.enemyCoreRadius, 0),
-        this.shared.enemyCoreMaterial,
-      );
-      core.position.set(...RENDERING.ships.enemyCorePosition);
-      core.rotation.z = Math.PI / 4;
-      group.add(core);
-      if (entity.boss) {
-        const bridge = new THREE.Mesh(
-          new THREE.BoxGeometry(...RENDERING.ships.bossBridgeSize),
           this.shared.darkMaterial,
         );
-        bridge.position.set(...RENDERING.ships.bossBridgePosition);
-        group.add(bridge);
-      }
+        const muzzle = new THREE.Mesh(
+          new THREE.BoxGeometry(...RENDERING.ships.turret.muzzleSize),
+          this.shared.commandAccentMaterial,
+        );
+        muzzle.position.y = RENDERING.ships.turret.muzzleY;
+        barrel.position.set(
+          side * RENDERING.ships.turret.barrelX,
+          RENDERING.ships.turret.barrelY,
+          RENDERING.ships.turret.barrelZ,
+        );
+        barrel.add(housing, muzzle);
+        return barrel;
+      });
+      turret.add(turretBase, ...barrels);
+      turret.userData.barrels = barrels;
+      turret.userData.recoil = 0;
+      group.add(turret);
+    }
+
+    if (entity.boss) {
+      const bridge = new THREE.Mesh(
+        new THREE.BoxGeometry(...RENDERING.ships.bossBridgeSize),
+        palette.armor,
+      );
+      bridge.position.set(...RENDERING.ships.bossBridgePosition);
+      group.add(bridge);
     }
 
     const halo = new THREE.Mesh(
@@ -550,6 +684,7 @@ export class GameRenderer {
     group.userData.halo = halo;
     group.userData.shieldRing = shieldRing;
     group.userData.turret = turret;
+    group.userData.engineGlows = engineGlows;
     group.userData.entity = entity;
     this.scene.add(group);
     return group;
@@ -660,6 +795,19 @@ export class GameRenderer {
             + shieldRatio * RENDERING.entityAnimation.shieldEnergyScale),
         );
       }
+      group.userData.engineGlows.forEach((engineGlow, index) => {
+        const enginePulse = 1 + Math.sin(
+          this.clockTime * RENDERING.entityAnimation.enginePulseSpeed
+            + index * RENDERING.entityAnimation.enginePulsePhase
+            + (entity.slot ?? 0),
+        ) * RENDERING.entityAnimation.enginePulseAmount;
+        const [baseX, baseY, baseZ] = engineGlow.userData.baseScale;
+        engineGlow.scale.set(
+          baseX * enginePulse,
+          baseY * (enginePulse + RENDERING.entityAnimation.enginePulseElongation),
+          baseZ,
+        );
+      });
       const readyPulse = entity.role === 'command'
         && energyRatio >= RENDERING.entityAnimation.readyEnergyThreshold
         ? Math.sin(this.clockTime * RENDERING.entityAnimation.readyPulseSpeed)
@@ -1198,6 +1346,10 @@ export class GameRenderer {
         this.shared.projectileGeometry,
         this.shared.ringGeometry,
         this.shared.chargeNodeGeometry,
+        this.shared.canopyGeometry,
+        this.shared.enginePodGeometry,
+        this.shared.engineGlowGeometry,
+        this.shared.navLightGeometry,
       ].includes(child.geometry)) {
         child.geometry.dispose();
       }

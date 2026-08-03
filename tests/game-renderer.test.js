@@ -26,4 +26,27 @@ describe('damage number formatting', () => {
 
     expect(source).not.toMatch(/0x[\da-f]+|#[\da-f]{3,8}/i);
   });
+
+  it('defines a complete layered visual profile for every ship archetype', () => {
+    const archetypes = [
+      'escort',
+      'lancer',
+      'guardian',
+      'command',
+      'raider',
+      'skirmisher',
+      'bulwark',
+      'artillery',
+      'boss',
+    ];
+
+    for (const archetype of archetypes) {
+      const profile = RENDERING.ships.profiles[archetype];
+      expect(RENDERING.ships.shapes[archetype].length).toBeGreaterThanOrEqual(8);
+      expect(profile.engineX.length).toBeGreaterThanOrEqual(2);
+      expect(profile.armorScale).toHaveLength(3);
+      expect(profile.cockpitScale).toHaveLength(3);
+    }
+    expect(Object.isFrozen(RENDERING.ships.profiles.command)).toBe(true);
+  });
 });
