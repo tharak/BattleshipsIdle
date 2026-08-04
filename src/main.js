@@ -109,7 +109,9 @@ const hud = new HudController({
   },
   onNewGame: () => {
     if (!window.confirm('Start a new game? All progress and upgrades will be erased.')) return false;
-    persistence.clear();
+    window.clearTimeout(saveTimer);
+    saveTimer = 0;
+    persistence.reset();
     window.location.reload();
     return true;
   },

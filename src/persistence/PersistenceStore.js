@@ -125,4 +125,10 @@ export class PersistenceStore {
       // Storage can be unavailable; the caller still reloads into a fresh memory state.
     }
   }
+
+  reset() {
+    const freshState = createDefaultSave(this.now());
+    this.save(freshState);
+    return freshState;
+  }
 }
