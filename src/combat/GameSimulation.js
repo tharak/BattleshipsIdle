@@ -1,5 +1,6 @@
 import {
   ARENA,
+  DEPLOYMENT_CAPACITY,
   ENEMIES,
   FLEET,
   FLAGSHIP_GUN,
@@ -11,6 +12,7 @@ import {
   TELEGRAPH_ATTACKS,
   WAVE_FLOW,
   WAVES,
+  SHIP_PURCHASE_COSTS,
   getEnemyStats,
   getWaveEnemyCount,
 } from '../config/balance.js';
@@ -168,6 +170,13 @@ export class GameSimulation {
       const role = index === commandIndex ? 'command' : this.getFleetRole(index);
       return this.createFriendly(role, index);
     });
+    let nextSlot = count;
+    for (const [role, purchased] of Object.entries(this.progression.purchasedShips)) {
+      for (let index = 0; index < purchased; index += 1) {
+        fleet.push(this.createFriendly(role, nextSlot));
+        nextSlot += 1;
+      }
+    }
     this.formationSystem.applyInitialPositions(fleet);
     return fleet;
   }
@@ -223,7 +232,7 @@ export class GameSimulation {
     this.wavePhase = 'deployment';
     this.waveResolved = false;
     this.waveIntermission = 0;
-    this.deploymentsRemaining = this.progression.upgrades.deploymentCapacity;
+    this.deploymentsRemaining = DEPLOYMENT_CAPACITY;
     this.advanceAvailable = false;
     this.flagshipPathBlockerIds = [];
     this.cancelFlagshipFire('wave-deployment');
@@ -950,6 +959,19 @@ export class GameSimulation {
     return { changed: true, role, slot: ship.slot, path };
   }
 
+  buyShipType(role) {
+    if (!SHIP_PURCHASE_COSTS[role]) return { purchased: false, reason: 'unknown-ship' };
+    const result = this.progression.buyShip(role);
+    if (!result.purchased) return result;
+    const slot = Math.max(-1, ...this.friendlies.map((ship) => ship.slot)) + 1;
+    const ship = this.createFriendly(role, slot);
+    this.friendlies.push(ship);
+    this.formationSystem.ensureFleetSlots(this.friendlies);
+    this.emit('friendlyJoined', { id: ship.id, role, x: ship.x, y: ship.y });
+    this.onStateChange();
+    return { ...result, ship };
+  }
+
   beginShipDragBySlot(slot) {
     const ship = this.friendlies.find((candidate) => candidate.slot === slot && candidate.alive);
     if (!ship || !this.canEditFormation() || this.status === 'paused' || this.suspended) {
@@ -1383,7 +1405,7 @@ export class GameSimulation {
       waveIntermission: this.waveIntermission,
       deployment: {
         remaining: this.deploymentsRemaining,
-        capacity: this.progression.upgrades.deploymentCapacity,
+        capacity: DEPLOYMENT_CAPACITY,
       },
       waveState: {
         phase: this.wavePhase,

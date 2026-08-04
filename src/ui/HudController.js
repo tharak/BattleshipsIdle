@@ -2,6 +2,8 @@ function percent(value) {
   return Math.round(Math.max(0, Number(value) || 0) * 100);
 }
 
+import { SHIP_PURCHASE_COSTS } from '../config/balance.js';
+
 function previewSuffix(preview, keys) {
   if (!preview) return '';
   const values = keys.map((key) => Math.round((preview.changes?.[key] ?? 0) * 100));
@@ -322,9 +324,10 @@ export class HudController {
       button.disabled = buying
         ? snapshot.status !== 'running' || snapshot.waveState.phase !== 'deployment'
         : remaining === 0 || snapshot.deployment?.remaining <= 0 || snapshot.waveState.phase !== 'deployment';
-      count.textContent = buying ? 'BUY' : remaining > 0 ? `${remaining} READY` : 'DEPLOYED';
+      count.textContent = buying ? `BUY ${SHIP_PURCHASE_COSTS[role]} ◇` : remaining > 0 ? `${remaining} READY` : 'DEPLOYED';
+      button.classList.toggle('is-buy', buying);
       button.setAttribute('aria-label', buying
-        ? `Buy a ${role} from fleet upgrades`
+        ? `Buy a ${role} for ${SHIP_PURCHASE_COSTS[role]} salvage`
         : `Add ${role} to formation. ${remaining} available`);
     }
   }

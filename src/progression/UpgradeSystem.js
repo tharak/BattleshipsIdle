@@ -83,10 +83,6 @@ export class UpgradeSystem {
     return 7 + this.getLevel('fleetSize');
   }
 
-  get deploymentCapacity() {
-    return 4 + this.getLevel('deploymentCapacity');
-  }
-
   getShieldFor(role) {
     const level = this.getLevel('shieldStrength');
     if (level === 0) return 0;

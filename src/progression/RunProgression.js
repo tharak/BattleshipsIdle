@@ -1,4 +1,5 @@
 import { UpgradeSystem } from './UpgradeSystem.js';
+import { SHIP_PURCHASE_COSTS } from '../config/balance.js';
 
 export class RunProgression {
   constructor({ state = {}, onChange = () => {} } = {}) {
@@ -6,6 +7,9 @@ export class RunProgression {
     this.lifetimeHighestWave = Math.max(0, Number(state.highestWave || 0));
     this.totalDestroyed = Math.max(0, Number(state.totalDestroyed || 0));
     this.upgrades = new UpgradeSystem(state.upgrades);
+    this.purchasedShips = Object.fromEntries(Object.keys(SHIP_PURCHASE_COSTS).map((role) => [
+      role, Math.max(0, Math.floor(Number(state.purchasedShips?.[role]) || 0)),
+    ]));
     this.onChange = onChange;
     this.resetRun();
   }
@@ -50,6 +54,16 @@ export class RunProgression {
     return { reset: true, refund, currency: this.currency };
   }
 
+  buyShip(role) {
+    const cost = SHIP_PURCHASE_COSTS[role];
+    if (!cost) return { purchased: false, reason: 'unknown-ship' };
+    if (this.currency < cost) return { purchased: false, reason: 'insufficient', cost, currency: this.currency };
+    this.currency -= cost;
+    this.purchasedShips[role] += 1;
+    this.onChange();
+    return { purchased: true, role, cost, currency: this.currency };
+  }
+
   snapshot() {
     return {
       salvage: this.currency,
@@ -59,6 +73,7 @@ export class RunProgression {
       highestWave: this.lifetimeHighestWave,
       totalDestroyed: this.totalDestroyed,
       upgrades: this.upgrades.snapshot(),
+      purchasedShips: { ...this.purchasedShips },
     };
   }
 
@@ -68,6 +83,7 @@ export class RunProgression {
       highestWave: this.lifetimeHighestWave,
       totalDestroyed: this.totalDestroyed,
       upgrades: this.upgrades.exportLevels(),
+      purchasedShips: { ...this.purchasedShips },
     };
   }
 }

@@ -76,6 +76,9 @@ export const WAVES = Object.freeze({
   spawnTopMax: 69,
 });
 
+export const DEPLOYMENT_CAPACITY = 4;
+export const SHIP_PURCHASE_COSTS = Object.freeze({ escort: 120, lancer: 240, guardian: 360 });
+
 export const WAVE_FLOW = Object.freeze({
   formationRevealMinimumSlots: 7,
   formationHorizontalMargin: 5,

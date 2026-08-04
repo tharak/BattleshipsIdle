@@ -79,10 +79,11 @@ const hud = new HudController({
     if (result.changed) persistNow();
     return result;
   },
-  onBuyShip: () => {
-    const opened = simulation.openShop();
+  onBuyShip: (role) => {
+    const result = simulation.buyShipType(role);
     consumeAndDispatchEvents();
-    return opened;
+    if (result.purchased) persistNow();
+    return result;
   },
   onShopOpen: () => {
     const opened = simulation.openShop();
