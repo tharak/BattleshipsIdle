@@ -107,6 +107,12 @@ const hud = new HudController({
     persistNow();
     return { ...result, snapshot: simulation.getSnapshot() };
   },
+  onNewGame: () => {
+    if (!window.confirm('Start a new game? All progress and upgrades will be erased.')) return false;
+    persistence.clear();
+    window.location.reload();
+    return true;
+  },
   onOnboardingComplete: () => {
     persistentState.onboardingComplete = true;
     persistNow();

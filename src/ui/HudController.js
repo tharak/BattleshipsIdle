@@ -21,6 +21,7 @@ export class HudController {
     onShopClose,
     onUpgrade,
     onResetUpgrades = () => ({ reset: false }),
+    onNewGame = () => false,
     onReserveDragStart = () => ({ dragging: false }),
     onReserveDragMove = () => {},
     onReserveDragEnd = () => {},
@@ -63,6 +64,7 @@ export class HudController {
       shopCurrency: document.querySelector('#shop-currency'),
       upgradeList: document.querySelector('#upgrade-list'),
       resetUpgradesButton: document.querySelector('#reset-upgrades-button'),
+      newGameButton: document.querySelector('#new-game-button'),
       shipTray: document.querySelector('#ship-tray'),
       offlineOverlay: document.querySelector('#offline-overlay'),
       offlineEarned: document.querySelector('#offline-earned'),
@@ -98,6 +100,7 @@ export class HudController {
     });
     this.onUpgrade = onUpgrade;
     this.onResetUpgrades = onResetUpgrades;
+    this.elements.newGameButton.addEventListener('click', onNewGame);
     this.onReserveDragStart = onReserveDragStart;
     this.onReserveDragMove = onReserveDragMove;
     this.onReserveDragEnd = onReserveDragEnd;

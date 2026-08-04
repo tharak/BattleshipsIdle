@@ -115,4 +115,12 @@ export class PersistenceStore {
     }
     return payload;
   }
+
+  clear() {
+    try {
+      this.storage?.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage can be unavailable; the caller still reloads into a fresh memory state.
+    }
+  }
 }

@@ -665,6 +665,17 @@ button:focus-visible {
 
 .shop-reset:hover { border-color: var(--gold); }
 
+.shop-new-game {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 106, 120, 0.42);
+  color: #ffb1b8;
+  background: rgba(55, 15, 24, 0.72);
+  cursor: pointer;
+}
+
+.shop-new-game:hover { border-color: var(--danger); }
+
 .upgrade-list {
   display: grid;
   flex: 1 1 auto;
@@ -1337,7 +1348,8 @@ button:focus-visible {
 
   .formation-bar { width: 100%; }
   .formation-state { max-width: 34vw; }
-  .shop-reset { min-height: 34px; padding: 0 7px; font-size: 9px; }
+  .shop-reset,
+  .shop-new-game { min-height: 34px; padding: 0 7px; font-size: 9px; }
 }
 
 @media (max-height: 600px) and (orientation: landscape) {
