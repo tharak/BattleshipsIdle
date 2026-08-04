@@ -316,10 +316,8 @@ export class HudController {
     for (const button of this.elements.shipTypeButtons) {
       const role = button.dataset.shipRole;
       const remaining = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && ship.inReserve).length;
-      const deployed = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && !ship.inReserve).length;
       const count = button.querySelector('.ship-roster__action');
-      const owned = remaining + deployed;
-      const buying = owned === 0;
+      const buying = remaining === 0;
       button.dataset.action = buying ? 'buy' : 'deploy';
       button.disabled = buying
         ? snapshot.status !== 'running' || snapshot.waveState.phase !== 'deployment'
