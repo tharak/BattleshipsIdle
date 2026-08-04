@@ -213,7 +213,10 @@ export class FormationSystem {
 
   getFlagshipPosition() {
     const bounds = this.getPlacementBounds();
-    return { x: 0, y: bounds.maxY - FORMATION_EDITOR.gridSize * 2 };
+    return {
+      x: 0,
+      y: bounds.minY + Math.round((bounds.maxY - bounds.minY) / 6 / FORMATION_EDITOR.gridSize) * FORMATION_EDITOR.gridSize,
+    };
   }
 
   isFleetZonePoint(y) {

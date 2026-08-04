@@ -16,6 +16,7 @@ export class HudController {
     onReady,
     onAdvance,
     onDeployShip,
+    onBuyShip = () => {},
     onShopOpen,
     onShopClose,
     onUpgrade,
@@ -81,7 +82,10 @@ export class HudController {
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
     this.elements.shopCloseButton.addEventListener('click', onShopClose);
     for (const button of this.elements.shipTypeButtons) {
-      button.addEventListener('click', () => onDeployShip(button.dataset.shipRole));
+      button.addEventListener('click', () => {
+        if (button.dataset.action === 'buy') onBuyShip(button.dataset.shipRole);
+        else onDeployShip(button.dataset.shipRole);
+      });
     }
     this.onUpgrade = onUpgrade;
     this.onResetUpgrades = onResetUpgrades;
@@ -311,12 +315,17 @@ export class HudController {
       const role = button.dataset.shipRole;
       const remaining = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && ship.inReserve).length;
       const deployed = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && !ship.inReserve).length;
-      const count = button.querySelector('span');
-      button.disabled = remaining === 0
-        || snapshot.deployment?.remaining <= 0
-        || snapshot.waveState.phase !== 'deployment';
-      count.textContent = remaining > 0 ? `${remaining} READY` : `${deployed} DEPLOYED`;
-      button.setAttribute('aria-label', `Add ${role} to formation. ${remaining} available`);
+      const count = button.querySelector('.ship-roster__action');
+      const owned = remaining + deployed;
+      const buying = owned === 0;
+      button.dataset.action = buying ? 'buy' : 'deploy';
+      button.disabled = buying
+        ? snapshot.status !== 'running' || snapshot.waveState.phase !== 'deployment'
+        : remaining === 0 || snapshot.deployment?.remaining <= 0 || snapshot.waveState.phase !== 'deployment';
+      count.textContent = buying ? 'BUY' : remaining > 0 ? `${remaining} READY` : 'DEPLOYED';
+      button.setAttribute('aria-label', buying
+        ? `Buy a ${role} from fleet upgrades`
+        : `Add ${role} to formation. ${remaining} available`);
     }
   }
 
