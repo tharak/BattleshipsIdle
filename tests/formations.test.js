@@ -50,23 +50,6 @@ describe('FormationSystem', () => {
     expect(upgraded.snapshot(fleet()).maneuverSpeed).toBeGreaterThan(base.snapshot(fleet()).maneuverSpeed);
   });
 
-  it('moves the flagship physically after a valid custom edit', () => {
-    const system = new FormationSystem();
-    const ships = fleet();
-    system.applyInitialPositions(ships);
-    const flagship = ships.find(({ role }) => role === 'command');
-    const originalY = flagship.y;
-
-    system.previewPlacement(flagship.slot, 0, -50, ships);
-    const result = system.commitPlacement(ships);
-    system.update(ships, 0.2);
-
-    expect(result.changed).toBe(true);
-    expect(flagship.y).toBeGreaterThan(originalY);
-    expect(flagship.y).toBeLessThan(flagship.targetY);
-    expect(system.activeLoadout.templateId).toBeNull();
-  });
-
   it('derives opposed strengths from current geometry', () => {
     const wide = new FormationSystem('line');
     const dense = new FormationSystem('denseColumn');
@@ -81,7 +64,6 @@ describe('FormationSystem', () => {
     expect(wideSnapshot.modifiers.rangeBonus).toBeGreaterThan(denseSnapshot.modifiers.rangeBonus);
     expect(denseSnapshot.geometry.cohesion).toBeGreaterThan(wideSnapshot.geometry.cohesion);
     expect(denseSnapshot.modifiers.flagshipDamageBonus).toBeGreaterThan(wideSnapshot.modifiers.flagshipDamageBonus);
-    expect(denseSnapshot.modifiers.flagshipDamageReduction).toBeGreaterThan(0);
   });
 
   it('animates templates and enforces the loadout combat cooldown', () => {

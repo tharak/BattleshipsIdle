@@ -45,6 +45,7 @@ export class HudController {
       waveActionLabel: document.querySelector('#wave-action-label'),
       waveActionHint: document.querySelector('#wave-action-hint'),
       shipTypeButtons: [...document.querySelectorAll('[data-ship-role]')],
+      deploymentCount: document.querySelector('#deployment-count'),
       shopButton: document.querySelector('#shop-button'),
       startShopButton: document.querySelector('#start-shop-button'),
       gameoverShopButton: document.querySelector('#gameover-shop-button'),
@@ -130,6 +131,7 @@ export class HudController {
 
     const { formation } = snapshot;
     const waveState = snapshot.waveState ?? { phase: 'idle' };
+    this.elements.deploymentCount.textContent = String(snapshot.deployment?.remaining ?? 0);
     this.renderShipRoster(snapshot);
     this.elements.shipTypeButtons.forEach((button) => {
       button.disabled = snapshot.status !== 'running' || waveState.phase !== 'deployment';
@@ -310,14 +312,11 @@ export class HudController {
       const remaining = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && ship.inReserve).length;
       const deployed = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && !ship.inReserve).length;
       const count = button.querySelector('span');
-      if (role === 'command') {
-        button.disabled = true;
-        button.setAttribute('aria-label', 'Flagship deployed');
-      } else {
-        button.disabled = remaining === 0 || snapshot.waveState.phase !== 'deployment';
-        count.textContent = remaining > 0 ? `${remaining} READY` : `${deployed} DEPLOYED`;
-        button.setAttribute('aria-label', `Add ${role} to formation. ${remaining} available`);
-      }
+      button.disabled = remaining === 0
+        || snapshot.deployment?.remaining <= 0
+        || snapshot.waveState.phase !== 'deployment';
+      count.textContent = remaining > 0 ? `${remaining} READY` : `${deployed} DEPLOYED`;
+      button.setAttribute('aria-label', `Add ${role} to formation. ${remaining} available`);
     }
   }
 

@@ -211,6 +211,11 @@ export class FormationSystem {
     };
   }
 
+  getFlagshipPosition() {
+    const bounds = this.getPlacementBounds();
+    return { x: 0, y: bounds.maxY - FORMATION_EDITOR.gridSize * 2 };
+  }
+
   isFleetZonePoint(y) {
     const bounds = this.getPlacementBounds();
     return y >= bounds.minY + this.worldOffset.y
@@ -259,7 +264,9 @@ export class FormationSystem {
   getPositionsForFleet(friendlies, loadout = this.activeLoadout) {
     this.ensureFleetSlots(friendlies);
     const positions = slotMap(loadout.slots);
-    return friendlies.map((ship) => this.toWorldPoint(positions.get(ship.slot)));
+    return friendlies.map((ship) => ship.role === 'command'
+      ? this.toWorldPoint(this.getFlagshipPosition())
+      : this.toWorldPoint(positions.get(ship.slot)));
   }
 
   applyInitialPositions(friendlies) {
@@ -342,12 +349,17 @@ export class FormationSystem {
       && loadoutCandidate.y >= bounds.minY && loadoutCandidate.y <= bounds.maxY;
     const occupied = loadoutSlots.find((position) => position.slot !== slot
       && distance(position, loadoutCandidate) < FORMATION_EDITOR.minimumSeparation);
+    const flagship = friendlies.find((ship) => ship.role === 'command' && ship.alive !== false);
+    const flagshipSlot = flagship?.slot;
+    const onFlagship = flagshipSlot !== undefined
+      && slot !== flagshipSlot
+      && distance(this.getFlagshipPosition(), loadoutCandidate) < FORMATION_EDITOR.minimumSeparation;
     // Dropping on another ship is intentional: the two ships exchange positions.
     // Only reject a drop when it lands between slots or outside the editor.
     const separated = loadoutSlots.every((position) => position.slot === slot
       || position === occupied
       || distance(position, loadoutCandidate) >= FORMATION_EDITOR.minimumSeparation);
-    const valid = insideBounds && separated;
+    const valid = insideBounds && separated && !onFlagship;
     const positions = friendlies
       .filter((ship) => ship.alive !== false)
       .map((ship) => ship.slot === slot
@@ -363,7 +375,7 @@ export class FormationSystem {
       candidate,
       loadoutCandidate,
       valid,
-      reason: !insideBounds ? 'outside-fleet-zone' : !separated ? 'overlap' : null,
+      reason: !insideBounds ? 'outside-fleet-zone' : (!separated || onFlagship) ? 'overlap' : null,
       swapSlot: occupied?.slot ?? null,
       modifiers: previewModifiers,
       changes: Object.fromEntries(Object.keys(previewModifiers).map((key) => [key, round(previewModifiers[key] - currentModifiers[key])])),

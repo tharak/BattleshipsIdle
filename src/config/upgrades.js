@@ -4,6 +4,7 @@ export const UPGRADE_ORDER = Object.freeze([
   'volleyDamage',
   'volleyCooldown',
   'fleetSize',
+  'deploymentCapacity',
   'durability',
   'shieldStrength',
   'resourceGeneration',
@@ -35,6 +36,10 @@ export const UPGRADE_DEFINITIONS = Object.freeze({
       const unlock = level === 1 ? ' · Lancer unlocked' : level === 2 ? ' · Guardian unlocked' : '';
       return `${7 + level} active ships${unlock}`;
     },
+  }),
+  deploymentCapacity: Object.freeze({
+    id: 'deploymentCapacity', name: 'Deployment capacity', icon: '⌗', maxLevel: 8, baseCost: 140, costGrowth: 1.7,
+    describe: (level) => `${4 + level} deployments per wave`,
   }),
   durability: Object.freeze({
     id: 'durability', name: 'Ship durability', icon: '⬡', maxLevel: 16, baseCost: 75, costGrowth: 1.56,

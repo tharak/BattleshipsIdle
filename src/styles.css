@@ -1099,14 +1099,35 @@ button:focus-visible {
 .formation-bar {
   width: min(700px, calc(100vw - 32px));
   min-height: 76px;
-  grid-template-columns: minmax(0, 1fr) 76px;
-  grid-template-areas: "roster shop";
+  grid-template-columns: 86px minmax(0, 1fr) 76px;
+  grid-template-areas: "budget roster shop";
+}
+
+.deployment-budget {
+  grid-area: budget;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 4px;
+  border-right: 1px solid rgba(84, 244, 235, .18);
+  text-align: center;
+}
+
+.deployment-budget strong {
+  color: var(--gold);
+  font: 700 27px/1 "Chakra Petch", sans-serif;
+}
+
+.deployment-budget span {
+  color: var(--muted);
+  font: 700 7px/1.2 "Chakra Petch", sans-serif;
+  letter-spacing: .1em;
 }
 
 .ship-roster {
   grid-area: roster;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -1122,17 +1143,21 @@ button:focus-visible {
 }
 
 .ship-roster__button b { font: 700 10px "Chakra Petch", sans-serif; letter-spacing: .08em; }
-.ship-roster__button span { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+.ship-roster__button > span:last-child { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+.ship-roster__icon { color: var(--cyan); font: 700 19px/1 "Chakra Petch", sans-serif; }
 .ship-roster__button:hover:not(:disabled),
 .ship-roster__button:focus-visible:not(:disabled) { border-color: var(--cyan); background: rgba(20, 72, 88, .9); }
 .ship-roster__button:disabled { cursor: default; opacity: .42; }
 .formation-bar .dock-upgrade { grid-area: shop; height: auto; }
 
 @media (max-width: 480px) {
-  .formation-bar { width: 100%; min-height: 88px; grid-template-columns: minmax(0, 1fr) 62px; gap: 4px; padding: 5px; }
+  .formation-bar { width: 100%; min-height: 88px; grid-template-columns: 58px minmax(0, 1fr) 62px; gap: 4px; padding: 5px; }
   .ship-roster { gap: 3px; }
   .ship-roster__button b { font-size: 8px; }
-  .ship-roster__button span { font-size: 6px; }
+  .ship-roster__button > span:last-child { font-size: 6px; }
+  .ship-roster__icon { font-size: 15px; }
+  .deployment-budget strong { font-size: 22px; }
+  .deployment-budget span { font-size: 5.5px; }
 }
 
 @media (max-width: 360px) and (max-height: 650px) {
@@ -1476,14 +1501,27 @@ button:focus-visible {
 .formation-bar {
   width: min(700px, calc(100vw - 32px));
   min-height: 76px;
-  grid-template-columns: minmax(0, 1fr) 76px;
-  grid-template-areas: "roster shop";
+  grid-template-columns: 86px minmax(0, 1fr) 76px;
+  grid-template-areas: "budget roster shop";
 }
+
+.deployment-budget {
+  grid-area: budget;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 4px;
+  border-right: 1px solid rgba(84, 244, 235, .18);
+  text-align: center;
+}
+
+.deployment-budget strong { color: var(--gold); font: 700 27px/1 "Chakra Petch", sans-serif; }
+.deployment-budget span { color: var(--muted); font: 700 7px/1.2 "Chakra Petch", sans-serif; letter-spacing: .1em; }
 
 .ship-roster {
   grid-area: roster;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -1499,15 +1537,19 @@ button:focus-visible {
 }
 
 .ship-roster__button b { font: 700 10px "Chakra Petch", sans-serif; letter-spacing: .08em; }
-.ship-roster__button span { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+.ship-roster__button > span:last-child { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+.ship-roster__icon { color: var(--cyan); font: 700 19px/1 "Chakra Petch", sans-serif; }
 .ship-roster__button:hover:not(:disabled),
 .ship-roster__button:focus-visible:not(:disabled) { border-color: var(--cyan); background: rgba(20, 72, 88, .9); }
 .ship-roster__button:disabled { cursor: default; opacity: .42; }
 .formation-bar .dock-upgrade { grid-area: shop; height: auto; }
 
 @media (max-width: 480px) {
-  .formation-bar { width: 100%; min-height: 88px; grid-template-columns: minmax(0, 1fr) 62px; gap: 4px; padding: 5px; }
+  .formation-bar { width: 100%; min-height: 88px; grid-template-columns: 58px minmax(0, 1fr) 62px; gap: 4px; padding: 5px; }
   .ship-roster { gap: 3px; }
   .ship-roster__button b { font-size: 8px; }
-  .ship-roster__button span { font-size: 6px; }
+  .ship-roster__button > span:last-child { font-size: 6px; }
+  .ship-roster__icon { font-size: 15px; }
+  .deployment-budget strong { font-size: 22px; }
+  .deployment-budget span { font-size: 5.5px; }
 }

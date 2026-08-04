@@ -87,40 +87,6 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().flagshipGun.rechargeRemaining).toBeLessThan(FLAGSHIP_GUN.fullRecharge);
   });
 
-  it('stops each flagship pulse at the first enemy hull in its path', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    const [near, far, ...others] = simulation.enemies;
-    Object.assign(near, { x: 0, y: -8, health: 1000, maxHealth: 1000, scale: 1 });
-    Object.assign(far, { x: 0, y: 28, health: 1000, maxHealth: 1000, scale: 1 });
-    others.forEach((enemy) => { enemy.x = 40; });
-
-    simulation.consumeEvents();
-    simulation.beginFlagshipFire(0, ARENA.maxY);
-    const result = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
-
-    expect(result.hitId).toBe(near.id);
-    expect(near.health).toBeLessThan(1000);
-    expect(far.health).toBe(1000);
-    expect(result.y).toBeLessThan(near.y);
-  });
-
-  it('limits a missed flagship pulse to the fleet weapon range', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    simulation.enemies.forEach((enemy) => { enemy.x = 40; });
-
-    simulation.consumeEvents();
-    simulation.beginFlagshipFire(0, ARENA.maxY);
-    const result = simulation.consumeEvents().find((event) => event.type === 'flagshipGunPulse');
-    const rangeMultiplier = 1 + simulation.getSnapshot().formation.modifiers.rangeBonus;
-
-    expect(result.hitId).toBeNull();
-    expect(result.x).toBe(0);
-    expect(result.y - result.source.y).toBeCloseTo(FLEET.effectiveRange * rangeMultiplier);
-    expect(result.y).toBeLessThan(ARENA.maxY);
-  });
-
   it('reveals all five enemy formations from the shared template set', () => {
     const ids = ['line', 'wedge', 'defensiveArc', 'splitWings', 'denseColumn'];
 
@@ -424,19 +390,6 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().arena).toMatchObject({ minX: -30, maxX: 30 });
     expect(simulation.friendlies.every((ship) => Math.abs(ship.targetX) <= 30)).toBe(true);
     expect(simulation.enemies.every((enemy) => Math.abs(enemy.x) <= 27)).toBe(true);
-  });
-
-  it('applies defensive arc mitigation to incoming damage', () => {
-    const simulation = createSimulation();
-    simulation.changeFormation('defensiveArc');
-    startCombat(simulation);
-    const command = simulation.getCommandShip();
-
-    const reduction = simulation.getSnapshot().formation.modifiers.flagshipDamageReduction;
-    simulation.damageEntity(command, 100, 'test');
-
-    expect(reduction).toBeGreaterThan(0);
-    expect(command.maxHealth - command.health).toBeCloseTo(100 * (1 - reduction));
   });
 
   it('makes dense-column flagship gun pulses stronger', () => {

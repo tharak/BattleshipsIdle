@@ -125,6 +125,7 @@ export class GameSimulation {
     this.wavePhase = 'idle';
     this.waveIntermission = 0;
     this.waveResolved = false;
+    this.deploymentsRemaining = 0;
     this.enemyFormationId = null;
     this.advanceAvailable = false;
     this.flagshipPathBlockerIds = [];
@@ -222,6 +223,7 @@ export class GameSimulation {
     this.wavePhase = 'deployment';
     this.waveResolved = false;
     this.waveIntermission = 0;
+    this.deploymentsRemaining = this.progression.upgrades.deploymentCapacity;
     this.advanceAvailable = false;
     this.flagshipPathBlockerIds = [];
     this.cancelFlagshipFire('wave-deployment');
@@ -919,7 +921,7 @@ export class GameSimulation {
       return { dragging: false, reason: 'inactive' };
     }
     const candidates = this.friendlies
-      .filter((ship) => ship.alive && !ship.inReserve)
+      .filter((ship) => ship.alive && !ship.inReserve && ship.role !== 'command')
       .map((ship) => ({ ship, distance: Math.hypot(ship.x - x, ship.y - y) }))
       .filter(({ distance: separation }) => separation <= FORMATION_EDITOR.shipPickRadius)
       .sort((left, right) => left.distance - right.distance);
@@ -934,14 +936,16 @@ export class GameSimulation {
     if (this.status !== 'running' || this.wavePhase !== 'deployment' || this.suspended) {
       return { changed: false, reason: 'inactive' };
     }
+    if (this.deploymentsRemaining <= 0) return { changed: false, reason: 'capacity' };
     const ship = this.friendlies.find((candidate) => candidate.role === role
       && candidate.alive && candidate.inReserve);
     if (!ship) return { changed: false, reason: 'none-available' };
     const positions = this.formationSystem.getPositionsForFleet(this.friendlies);
     const target = positions[this.friendlies.indexOf(ship)];
     ship.inReserve = false;
+    this.deploymentsRemaining -= 1;
     const path = this.formationSystem.moveShip(ship, target);
-    this.emit('formationShipDeployed', { shipId: ship.id, role, slot: ship.slot, path });
+      this.emit('formationShipDeployed', { shipId: ship.id, role, slot: ship.slot, path });
     this.onStateChange();
     return { changed: true, role, slot: ship.slot, path };
   }
@@ -1377,6 +1381,10 @@ export class GameSimulation {
       elapsed: this.elapsed,
       wave: this.wave,
       waveIntermission: this.waveIntermission,
+      deployment: {
+        remaining: this.deploymentsRemaining,
+        capacity: this.progression.upgrades.deploymentCapacity,
+      },
       waveState: {
         phase: this.wavePhase,
         enemyFormationId: this.enemyFormationId,
