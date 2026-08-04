@@ -1144,7 +1144,7 @@ button:focus-visible {
 
 .ship-roster__button b { font: 700 10px "Chakra Petch", sans-serif; letter-spacing: .08em; }
 .ship-roster__button > span:last-child { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
-.ship-roster__icon { color: var(--cyan); font: 700 19px/1 "Chakra Petch", sans-serif; }
+.ship-roster__icon { width: 30px; height: 27px; justify-self: center; color: var(--cyan); fill: currentColor; stroke: rgba(231, 255, 255, .85); stroke-width: .18; }
 .ship-roster__button.is-buy > span:last-child { color: var(--gold); }
 .ship-roster__button:hover:not(:disabled),
 .ship-roster__button:focus-visible:not(:disabled) { border-color: var(--cyan); background: rgba(20, 72, 88, .9); }
@@ -1156,7 +1156,7 @@ button:focus-visible {
   .ship-roster { gap: 3px; }
   .ship-roster__button b { font-size: 8px; }
   .ship-roster__button > span:last-child { font-size: 6px; }
-  .ship-roster__icon { font-size: 15px; }
+  .ship-roster__icon { width: 22px; height: 22px; }
   .deployment-budget strong { font-size: 22px; }
   .deployment-budget span { font-size: 5.5px; }
 }
@@ -1539,7 +1539,7 @@ button:focus-visible {
 
 .ship-roster__button b { font: 700 10px "Chakra Petch", sans-serif; letter-spacing: .08em; }
 .ship-roster__button > span:last-child { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
-.ship-roster__icon { color: var(--cyan); font: 700 19px/1 "Chakra Petch", sans-serif; }
+.ship-roster__icon { width: 30px; height: 27px; justify-self: center; color: var(--cyan); fill: currentColor; stroke: rgba(231, 255, 255, .85); stroke-width: .18; }
 .ship-roster__button:hover:not(:disabled),
 .ship-roster__button:focus-visible:not(:disabled) { border-color: var(--cyan); background: rgba(20, 72, 88, .9); }
 .ship-roster__button:disabled { cursor: default; opacity: .42; }
@@ -1550,7 +1550,7 @@ button:focus-visible {
   .ship-roster { gap: 3px; }
   .ship-roster__button b { font-size: 8px; }
   .ship-roster__button > span:last-child { font-size: 6px; }
-  .ship-roster__icon { font-size: 15px; }
+  .ship-roster__icon { width: 22px; height: 22px; }
   .deployment-budget strong { font-size: 22px; }
   .deployment-budget span { font-size: 5.5px; }
 }

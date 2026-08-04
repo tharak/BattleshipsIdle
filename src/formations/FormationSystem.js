@@ -1,5 +1,6 @@
 import {
   ARENA,
+  FLEET,
   FORMATIONS,
   FORMATION_CHANGE,
   FORMATION_EDITOR,
@@ -354,9 +355,12 @@ export class FormationSystem {
       && distance(position, loadoutCandidate) < FORMATION_EDITOR.minimumSeparation);
     const flagship = friendlies.find((ship) => ship.role === 'command' && ship.alive !== false);
     const flagshipSlot = flagship?.slot;
+    const flagshipPosition = this.getFlagshipPosition();
     const onFlagship = flagshipSlot !== undefined
       && slot !== flagshipSlot
-      && distance(this.getFlagshipPosition(), loadoutCandidate) < FORMATION_EDITOR.minimumSeparation;
+      && (distance(flagshipPosition, loadoutCandidate) < FORMATION_EDITOR.minimumSeparation
+        || (Math.abs(loadoutCandidate.x - flagshipPosition.x) <= FLEET.commandHalfWidth
+          && Math.abs(loadoutCandidate.y - flagshipPosition.y) <= FORMATION_EDITOR.minimumSeparation));
     // Dropping on another ship is intentional: the two ships exchange positions.
     // Only reject a drop when it lands between slots or outside the editor.
     const separated = loadoutSlots.every((position) => position.slot === slot
