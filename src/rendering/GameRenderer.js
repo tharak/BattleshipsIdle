@@ -1016,7 +1016,10 @@ export class GameRenderer {
   syncEntities(entities, flagshipGun = {}, deltaSeconds = 0) {
     const energyRatio = flagshipGun.energyRatio ?? 0;
     const activeIds = new Set();
-    for (const entity of entities) {
+    const renderableEntities = entities.filter((entity) => entity.alive !== false
+      && entity.deployed !== false
+      && entity.inReserve !== true);
+    for (const entity of renderableEntities) {
       activeIds.add(entity.id);
       let group = this.entityMeshes.get(entity.id);
       if (!group) {
