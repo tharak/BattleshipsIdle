@@ -50,34 +50,12 @@
       </div>
 
       <section class="hud hud--bottom" aria-label="Combat controls">
-        <div id="formation-bar" class="formation-bar" role="group" aria-label="Custom formation command console">
-          <div class="geometry-strengths" aria-label="Live formation geometry bonuses">
-            <output id="spread-strength" class="geometry-strength" aria-label="Horizontal spread bonuses">RNG +0% · SIDE +0%</output>
-            <output id="cohesion-strength" class="geometry-strength" aria-label="Cohesion bonuses">RATE +0% · GUN +0%</output>
-            <output id="screening-strength" class="geometry-strength" aria-label="Flagship screening bonus">SCREEN −0%</output>
-            <div id="ship-tray" class="ship-tray" aria-label="Ships available for deployment. Press and hold a ship, then drag it onto the highlighted formation grid."></div>
-          </div>
-          <div class="loadout-controls" role="group" aria-label="Formation loadouts">
-            <button class="loadout-option" type="button" data-loadout="0" aria-label="Activate formation loadout 1" aria-pressed="true">L1</button>
-            <button class="loadout-option" type="button" data-loadout="1" aria-label="Activate formation loadout 2, locked by Command Network" aria-pressed="false">L2</button>
-            <button class="loadout-option" type="button" data-loadout="2" aria-label="Activate formation loadout 3, locked by Command Network" aria-pressed="false">L3</button>
-          </div>
-          <label class="template-picker" for="formation-template">
-            <span>TEMPLATE</span>
-            <select id="formation-template" aria-label="Apply a starter template to the active loadout">
-              <option value="">Apply…</option>
-              <option value="line">Line</option>
-              <option value="wedge">Wedge</option>
-              <option value="defensiveArc">Defensive arc</option>
-              <option value="splitWings">Split wings</option>
-              <option value="denseColumn">Dense column</option>
-            </select>
-          </label>
-          <div class="formation-feedback" aria-live="polite">
-            <span id="formation-state">Drag a ship to edit L1</span>
-            <span id="tactical-edge" class="tactical-edge" aria-label="Tactical Edge 0 of 3">
-              <b>EDGE</b><i></i><i></i><i></i>
-            </span>
+        <div id="formation-bar" class="formation-bar" role="group" aria-label="Deploy ships into formation">
+          <div id="ship-roster" class="ship-roster" aria-label="Available ship types">
+            <button class="ship-roster__button" type="button" data-ship-role="command"><b>FLAGSHIP</b><span>DEPLOYED</span></button>
+            <button class="ship-roster__button" type="button" data-ship-role="escort"><b>ESCORT</b><span>0 READY</span></button>
+            <button class="ship-roster__button" type="button" data-ship-role="lancer"><b>LANCER</b><span>0 READY</span></button>
+            <button class="ship-roster__button" type="button" data-ship-role="guardian"><b>GUARDIAN</b><span>0 READY</span></button>
           </div>
           <button id="shop-button" class="dock-upgrade" type="button" aria-label="Open fleet upgrades. 0 salvage available">
             <svg viewBox="0 0 40 32" aria-hidden="true">

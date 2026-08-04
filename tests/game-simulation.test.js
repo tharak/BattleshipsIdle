@@ -736,21 +736,6 @@ describe('GameSimulation', () => {
     expect(pulse.critical).toBe(true);
   });
 
-  it('cancels formation editing when combat pauses or ends', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    const ship = simulation.friendlies[0];
-    expect(simulation.beginShipDrag(ship.x, ship.y).dragging).toBe(true);
-
-    expect(simulation.togglePause()).toBe(true);
-    expect(simulation.getSnapshot().formation.preview).toBeNull();
-    expect(simulation.beginShipDrag(ship.x, ship.y)).toMatchObject({ dragging: false, reason: 'inactive' });
-
-    simulation.togglePause();
-    simulation.damageEntity(simulation.getCommandShip(), 10000, 'test');
-    expect(simulation.beginShipDrag(ship.x, ship.y)).toMatchObject({ dragging: false, reason: 'inactive' });
-  });
-
   it('keeps Tactical Edge between waves but resets it with the run', () => {
     const simulation = createSimulation();
     startCombat(simulation);

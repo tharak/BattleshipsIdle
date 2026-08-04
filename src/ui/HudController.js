@@ -15,16 +15,12 @@ export class HudController {
     onRestart,
     onReady,
     onAdvance,
-    onLoadout,
-    onTemplate,
+    onDeployShip,
     onShopOpen,
     onShopClose,
     onUpgrade,
     onResetUpgrades = () => ({ reset: false }),
     onNewGame = () => false,
-    onReserveDragStart = () => ({ dragging: false }),
-    onReserveDragMove = () => {},
-    onReserveDragEnd = () => {},
     onOnboardingComplete,
     offlineSummary,
     onboardingComplete,
@@ -48,14 +44,7 @@ export class HudController {
       waveActionKicker: document.querySelector('#wave-action-kicker'),
       waveActionLabel: document.querySelector('#wave-action-label'),
       waveActionHint: document.querySelector('#wave-action-hint'),
-      loadoutOptions: [...document.querySelectorAll('[data-loadout]')],
-      templatePicker: document.querySelector('#formation-template'),
-      spreadStrength: document.querySelector('#spread-strength'),
-      cohesionStrength: document.querySelector('#cohesion-strength'),
-      screeningStrength: document.querySelector('#screening-strength'),
-      formationState: document.querySelector('#formation-state'),
-      tacticalEdge: document.querySelector('#tactical-edge'),
-      tacticalEdgeNodes: [...document.querySelectorAll('#tactical-edge i')],
+      shipTypeButtons: [...document.querySelectorAll('[data-ship-role]')],
       shopButton: document.querySelector('#shop-button'),
       startShopButton: document.querySelector('#start-shop-button'),
       gameoverShopButton: document.querySelector('#gameover-shop-button'),
@@ -65,7 +54,6 @@ export class HudController {
       upgradeList: document.querySelector('#upgrade-list'),
       resetUpgradesButton: document.querySelector('#reset-upgrades-button'),
       newGameButton: document.querySelector('#new-game-button'),
-      shipTray: document.querySelector('#ship-tray'),
       offlineOverlay: document.querySelector('#offline-overlay'),
       offlineEarned: document.querySelector('#offline-earned'),
       offlineDetail: document.querySelector('#offline-detail'),
@@ -91,46 +79,12 @@ export class HudController {
     this.elements.startShopButton.addEventListener('click', onShopOpen);
     this.elements.gameoverShopButton.addEventListener('click', onShopOpen);
     this.elements.shopCloseButton.addEventListener('click', onShopClose);
-    for (const option of this.elements.loadoutOptions) {
-      option.addEventListener('click', () => onLoadout(Number(option.dataset.loadout)));
+    for (const button of this.elements.shipTypeButtons) {
+      button.addEventListener('click', () => onDeployShip(button.dataset.shipRole));
     }
-    this.elements.templatePicker.addEventListener('change', () => {
-      if (this.elements.templatePicker.value) onTemplate(this.elements.templatePicker.value);
-      this.elements.templatePicker.value = '';
-    });
     this.onUpgrade = onUpgrade;
     this.onResetUpgrades = onResetUpgrades;
     this.elements.newGameButton.addEventListener('click', onNewGame);
-    this.onReserveDragStart = onReserveDragStart;
-    this.onReserveDragMove = onReserveDragMove;
-    this.onReserveDragEnd = onReserveDragEnd;
-    this.reservePointerId = null;
-    this.elements.shipTray.addEventListener('pointerdown', (event) => {
-      const ship = event.target.closest('[data-ship-slot]');
-      if (!ship) return;
-      const result = this.onReserveDragStart(Number(ship.dataset.shipSlot), event.clientX, event.clientY);
-      if (!result?.dragging) return;
-      event.preventDefault();
-      this.reservePointerId = event.pointerId;
-      this.elements.shipTray.setPointerCapture?.(event.pointerId);
-    }, { passive: false });
-    this.elements.shipTray.addEventListener('pointermove', (event) => {
-      if (event.pointerId !== this.reservePointerId) return;
-      event.preventDefault();
-      this.onReserveDragMove(event.clientX, event.clientY);
-    }, { passive: false });
-    this.elements.shipTray.addEventListener('pointerup', (event) => {
-      if (event.pointerId !== this.reservePointerId) return;
-      event.preventDefault();
-      this.elements.shipTray.releasePointerCapture?.(event.pointerId);
-      this.reservePointerId = null;
-      this.onReserveDragEnd(event.clientX, event.clientY, false);
-    }, { passive: false });
-    this.elements.shipTray.addEventListener('pointercancel', (event) => {
-      if (event.pointerId !== this.reservePointerId) return;
-      this.reservePointerId = null;
-      this.onReserveDragEnd(event.clientX, event.clientY, true);
-    }, { passive: false });
     this.elements.resetUpgradesButton.addEventListener('click', () => {
       const result = this.onResetUpgrades();
       if (result?.snapshot) this.renderUpgrades(result.snapshot, true);
@@ -175,53 +129,11 @@ export class HudController {
     this.elements.flagshipVitals.setAttribute('aria-label', `Flagship hull ${hullPercent} percent, shield ${shieldPercent} percent`);
 
     const { formation } = snapshot;
-    this.renderShipTray(snapshot);
     const waveState = snapshot.waveState ?? { phase: 'idle' };
-    const formationEditable = snapshot.status === 'ready'
-      || (['running', 'paused'].includes(snapshot.status)
-        && ['deployment', 'combat'].includes(waveState.phase));
-    const modifiers = formation.preview?.modifiers ?? formation.modifiers;
-    this.elements.spreadStrength.textContent = `RNG +${percent(modifiers.rangeBonus)}% · SIDE +${percent(modifiers.sideDamageBonus)}%${previewSuffix(formation.preview, ['rangeBonus', 'sideDamageBonus'])}`;
-    this.elements.cohesionStrength.textContent = `RATE +${percent(modifiers.fireRateBonus)}% · GUN +${percent(modifiers.flagshipDamageBonus)}%${previewSuffix(formation.preview, ['fireRateBonus', 'flagshipDamageBonus'])}`;
-    this.elements.screeningStrength.textContent = `SCREEN −${percent(modifiers.flagshipDamageReduction)}%${previewSuffix(formation.preview, ['flagshipDamageReduction'])}`;
-
-    for (const option of this.elements.loadoutOptions) {
-      const index = Number(option.dataset.loadout);
-      const locked = index >= formation.unlockedLoadoutCount;
-      const active = index === formation.activeLoadoutIndex;
-      option.setAttribute('aria-pressed', String(active));
-      option.classList.toggle('is-locked', locked);
-      option.disabled = locked || !formationEditable
-        || (!active && formation.cooldownRemaining > 0 && waveState.phase === 'combat');
-      option.setAttribute('aria-label', locked
-        ? `Formation loadout ${index + 1}, locked by Command Network`
-        : `Activate formation loadout ${index + 1}${active ? ', currently active' : ''}`);
-    }
-    this.elements.templatePicker.disabled = !formationEditable
-      || (formation.cooldownRemaining > 0 && waveState.phase === 'combat');
-    if (snapshot.status === 'gameOver') {
-      this.elements.formationState.textContent = 'Run ended · formation saved';
-    } else if (formation.preview) {
-      this.elements.formationState.textContent = formation.preview.valid
-        ? `Release to move ship ${formation.preview.slot + 1}`
-        : `Invalid: ${formation.preview.reason === 'overlap' ? 'ships need 6 units' : 'outside fleet zone'}`;
-    } else if (formation.isTransitioning) {
-      this.elements.formationState.textContent = `${formation.movingShips.length} ship${formation.movingShips.length === 1 ? '' : 's'} maneuvering`;
-    } else if (waveState.phase === 'deployment') {
-      this.elements.formationState.textContent = `${waveState.enemyFormationName} sighted · drag reserve ships onto the grid`;
-    } else if (waveState.phase === 'approach') {
-      this.elements.formationState.textContent = 'Fleets closing · weapons held';
-    } else if (waveState.phase === 'extraction') {
-      this.elements.formationState.textContent = 'Flagship advancing · breakthrough';
-    } else if (waveState.phase === 'intermission') {
-      this.elements.formationState.textContent = 'Sector crossed · next contact incoming';
-    } else if (formation.cooldownRemaining > 0 && waveState.phase === 'combat') {
-      this.elements.formationState.textContent = `Loadout link ${formation.cooldownRemaining.toFixed(1)}s`;
-    } else if (waveState.canAdvance) {
-      this.elements.formationState.textContent = 'Flagship path clear · advance or keep fighting';
-    } else {
-      this.elements.formationState.textContent = `Drag a ship to edit L${formation.activeLoadoutIndex + 1}`;
-    }
+    this.renderShipRoster(snapshot);
+    this.elements.shipTypeButtons.forEach((button) => {
+      button.disabled = snapshot.status !== 'running' || waveState.phase !== 'deployment';
+    });
 
     const showIntel = snapshot.status === 'running'
       && ['deployment', 'approach'].includes(waveState.phase);
@@ -255,10 +167,6 @@ export class HudController {
       this.waveActionMode = null;
       this.elements.waveAction.hidden = true;
     }
-
-    const edgeStacks = snapshot.tacticalEdge.stacks;
-    this.elements.tacticalEdgeNodes.forEach((node, index) => node.classList.toggle('is-active', index < edgeStacks));
-    this.elements.tacticalEdge.setAttribute('aria-label', `Tactical Edge ${edgeStacks} of ${snapshot.tacticalEdge.maximumStacks}`);
 
     this.lastSnapshot = snapshot;
     if (!this.elements.shopOverlay.hidden) this.renderUpgrades(snapshot);
@@ -396,17 +304,20 @@ export class HudController {
     this.elements.offlineCloseButton.addEventListener('click', () => { this.elements.offlineOverlay.hidden = true; }, { once: true });
   }
 
-  renderShipTray(snapshot) {
-    const ships = snapshot.friendlies.filter((ship) => ship.role !== 'command' && ship.alive);
-    this.elements.shipTray.replaceChildren();
-    for (const ship of ships) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'ship-tray__ship';
-      button.dataset.shipSlot = String(ship.slot);
-      button.textContent = ship.role === 'escort' ? 'ESC' : ship.role.slice(0, 3).toUpperCase();
-      button.setAttribute('aria-label', `Deploy ${ship.role} from reserve`);
-      this.elements.shipTray.appendChild(button);
+  renderShipRoster(snapshot) {
+    for (const button of this.elements.shipTypeButtons) {
+      const role = button.dataset.shipRole;
+      const remaining = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && ship.inReserve).length;
+      const deployed = snapshot.friendlies.filter((ship) => ship.role === role && ship.alive && !ship.inReserve).length;
+      const count = button.querySelector('span');
+      if (role === 'command') {
+        button.disabled = true;
+        button.setAttribute('aria-label', 'Flagship deployed');
+      } else {
+        button.disabled = remaining === 0 || snapshot.waveState.phase !== 'deployment';
+        count.textContent = remaining > 0 ? `${remaining} READY` : `${deployed} DEPLOYED`;
+        button.setAttribute('aria-label', `Add ${role} to formation. ${remaining} available`);
+      }
     }
   }
 

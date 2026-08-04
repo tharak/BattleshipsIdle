@@ -181,6 +181,7 @@ export class GameSimulation {
       faction: 'friendly',
       role,
       slot,
+      inReserve: role !== 'command',
       x: 0,
       y: ARENA.commandY,
       health: maxHealth,
@@ -918,7 +919,7 @@ export class GameSimulation {
       return { dragging: false, reason: 'inactive' };
     }
     const candidates = this.friendlies
-      .filter((ship) => ship.alive)
+      .filter((ship) => ship.alive && !ship.inReserve)
       .map((ship) => ({ ship, distance: Math.hypot(ship.x - x, ship.y - y) }))
       .filter(({ distance: separation }) => separation <= FORMATION_EDITOR.shipPickRadius)
       .sort((left, right) => left.distance - right.distance);
@@ -927,6 +928,22 @@ export class GameSimulation {
     const preview = this.formationSystem.previewPlacement(ship.slot, ship.x, ship.y, this.friendlies);
     this.emit('formationDragStarted', { shipId: ship.id, slot: ship.slot });
     return { dragging: true, shipId: ship.id, slot: ship.slot, preview };
+  }
+
+  deployShipType(role) {
+    if (this.status !== 'running' || this.wavePhase !== 'deployment' || this.suspended) {
+      return { changed: false, reason: 'inactive' };
+    }
+    const ship = this.friendlies.find((candidate) => candidate.role === role
+      && candidate.alive && candidate.inReserve);
+    if (!ship) return { changed: false, reason: 'none-available' };
+    const positions = this.formationSystem.getPositionsForFleet(this.friendlies);
+    const target = positions[this.friendlies.indexOf(ship)];
+    ship.inReserve = false;
+    const path = this.formationSystem.moveShip(ship, target);
+    this.emit('formationShipDeployed', { shipId: ship.id, role, slot: ship.slot, path });
+    this.onStateChange();
+    return { changed: true, role, slot: ship.slot, path };
   }
 
   beginShipDragBySlot(slot) {

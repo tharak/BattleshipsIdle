@@ -73,14 +73,8 @@ const hud = new HudController({
     consumeAndDispatchEvents();
     return result;
   },
-  onLoadout: (loadoutIndex) => {
-    const result = simulation.activateFormationLoadout(loadoutIndex);
-    consumeAndDispatchEvents();
-    if (result.changed) persistNow();
-    return result;
-  },
-  onTemplate: (templateId) => {
-    const result = simulation.applyFormationTemplate(templateId);
+  onDeployShip: (role) => {
+    const result = simulation.deployShipType(role);
     consumeAndDispatchEvents();
     if (result.changed) persistNow();
     return result;
@@ -135,23 +129,6 @@ const targetingInput = new TargetingInput({
     consumeAndDispatchEvents();
   },
   onFormationEnd: (_point, { cancelled }) => {
-    const result = simulation.commitShipDrag({ cancelled });
-    consumeAndDispatchEvents();
-    if (result.changed) persistNow();
-  },
-  onReserveDragStart: (slot) => {
-    const result = simulation.beginShipDragBySlot(slot);
-    consumeAndDispatchEvents();
-    return result;
-  },
-  onReserveDragMove: (clientX, clientY) => {
-    const point = gameRenderer.screenToWorld(clientX, clientY);
-    if (point) simulation.previewShipDrag(point.x, point.y);
-    consumeAndDispatchEvents();
-  },
-  onReserveDragEnd: (clientX, clientY, cancelled) => {
-    const point = gameRenderer.screenToWorld(clientX, clientY);
-    if (point && !cancelled) simulation.previewShipDrag(point.x, point.y);
     const result = simulation.commitShipDrag({ cancelled });
     consumeAndDispatchEvents();
     if (result.changed) persistNow();
