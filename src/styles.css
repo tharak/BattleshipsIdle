@@ -1471,3 +1471,43 @@ button:focus-visible {
   .template-picker select { height: 28px; }
   .formation-feedback { padding: 3px 5px; }
 }
+
+/* Final ship roster dock overrides the legacy formation-console styles above. */
+.formation-bar {
+  width: min(700px, calc(100vw - 32px));
+  min-height: 76px;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-areas: "roster shop";
+}
+
+.ship-roster {
+  grid-area: roster;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.ship-roster__button {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  align-content: center;
+  border: 1px solid rgba(84, 244, 235, .28);
+  color: var(--cyan-soft);
+  background: rgba(14, 38, 58, .8);
+  cursor: pointer;
+}
+
+.ship-roster__button b { font: 700 10px "Chakra Petch", sans-serif; letter-spacing: .08em; }
+.ship-roster__button span { color: var(--muted); font: 700 8px "Chakra Petch", sans-serif; letter-spacing: .06em; }
+.ship-roster__button:hover:not(:disabled),
+.ship-roster__button:focus-visible:not(:disabled) { border-color: var(--cyan); background: rgba(20, 72, 88, .9); }
+.ship-roster__button:disabled { cursor: default; opacity: .42; }
+.formation-bar .dock-upgrade { grid-area: shop; height: auto; }
+
+@media (max-width: 480px) {
+  .formation-bar { width: 100%; min-height: 88px; grid-template-columns: minmax(0, 1fr) 62px; gap: 4px; padding: 5px; }
+  .ship-roster { gap: 3px; }
+  .ship-roster__button b { font-size: 8px; }
+  .ship-roster__button span { font-size: 6px; }
+}
