@@ -34,6 +34,15 @@ export class UpgradeSystem {
     return { purchased: true, id, level: this.levels[id], cost, currency: currency - cost };
   }
 
+  reset() {
+    const refund = Object.entries(this.levels).reduce((total, [id, level]) => {
+      for (let index = 0; index < level; index += 1) total += getUpgradeCost(id, index) ?? 0;
+      return total;
+    }, 0);
+    this.levels = Object.fromEntries(UPGRADE_ORDER.map((id) => [id, 0]));
+    return refund;
+  }
+
   get shipDamageMultiplier() {
     return 1 + this.getLevel('shipDamage') * 0.12;
   }

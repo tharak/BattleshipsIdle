@@ -20,6 +20,10 @@ export class HudController {
     onShopOpen,
     onShopClose,
     onUpgrade,
+    onResetUpgrades = () => ({ reset: false }),
+    onReserveDragStart = () => ({ dragging: false }),
+    onReserveDragMove = () => {},
+    onReserveDragEnd = () => {},
     onOnboardingComplete,
     offlineSummary,
     onboardingComplete,
@@ -58,6 +62,8 @@ export class HudController {
       shopCloseButton: document.querySelector('#shop-close-button'),
       shopCurrency: document.querySelector('#shop-currency'),
       upgradeList: document.querySelector('#upgrade-list'),
+      resetUpgradesButton: document.querySelector('#reset-upgrades-button'),
+      shipTray: document.querySelector('#ship-tray'),
       offlineOverlay: document.querySelector('#offline-overlay'),
       offlineEarned: document.querySelector('#offline-earned'),
       offlineDetail: document.querySelector('#offline-detail'),
@@ -91,6 +97,41 @@ export class HudController {
       this.elements.templatePicker.value = '';
     });
     this.onUpgrade = onUpgrade;
+    this.onResetUpgrades = onResetUpgrades;
+    this.onReserveDragStart = onReserveDragStart;
+    this.onReserveDragMove = onReserveDragMove;
+    this.onReserveDragEnd = onReserveDragEnd;
+    this.reservePointerId = null;
+    this.elements.shipTray.addEventListener('pointerdown', (event) => {
+      const ship = event.target.closest('[data-ship-slot]');
+      if (!ship) return;
+      const result = this.onReserveDragStart(Number(ship.dataset.shipSlot), event.clientX, event.clientY);
+      if (!result?.dragging) return;
+      event.preventDefault();
+      this.reservePointerId = event.pointerId;
+      this.elements.shipTray.setPointerCapture?.(event.pointerId);
+    }, { passive: false });
+    this.elements.shipTray.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== this.reservePointerId) return;
+      event.preventDefault();
+      this.onReserveDragMove(event.clientX, event.clientY);
+    }, { passive: false });
+    this.elements.shipTray.addEventListener('pointerup', (event) => {
+      if (event.pointerId !== this.reservePointerId) return;
+      event.preventDefault();
+      this.elements.shipTray.releasePointerCapture?.(event.pointerId);
+      this.reservePointerId = null;
+      this.onReserveDragEnd(event.clientX, event.clientY, false);
+    }, { passive: false });
+    this.elements.shipTray.addEventListener('pointercancel', (event) => {
+      if (event.pointerId !== this.reservePointerId) return;
+      this.reservePointerId = null;
+      this.onReserveDragEnd(event.clientX, event.clientY, true);
+    }, { passive: false });
+    this.elements.resetUpgradesButton.addEventListener('click', () => {
+      const result = this.onResetUpgrades();
+      if (result?.snapshot) this.renderUpgrades(result.snapshot, true);
+    });
     this.lastUpgradeSignature = '';
     this.onboardingComplete = onboardingComplete;
     this.onboardingStage = 0;
@@ -131,6 +172,7 @@ export class HudController {
     this.elements.flagshipVitals.setAttribute('aria-label', `Flagship hull ${hullPercent} percent, shield ${shieldPercent} percent`);
 
     const { formation } = snapshot;
+    this.renderShipTray(snapshot);
     const waveState = snapshot.waveState ?? { phase: 'idle' };
     const formationEditable = snapshot.status === 'ready'
       || (['running', 'paused'].includes(snapshot.status)
@@ -274,6 +316,8 @@ export class HudController {
         this.advanceOnboarding('flagship');
       } else if (event.type === 'upgradePurchased') {
         this.showMessage(`${event.upgrade.name} // level ${event.level}`, 1.1);
+      } else if (event.type === 'upgradesReset') {
+        this.showMessage(`Upgrades reset // +${event.refund} salvage returned`, 1.4);
       } else if (event.type === 'shopOpened') {
         this.elements.shopOverlay.hidden = false;
         if (this.lastSnapshot) this.renderUpgrades(this.lastSnapshot, true);
@@ -347,6 +391,20 @@ export class HudController {
     this.elements.offlineDetail.textContent = `${hours < 1 ? Math.max(1, Math.round(hours * 60)) + ' minutes' : hours.toFixed(1) + ' hours'} credited${summary.capped ? ' (offline cap reached)' : ''}. Active command remains the fastest path to progression.`;
     this.elements.offlineOverlay.hidden = false;
     this.elements.offlineCloseButton.addEventListener('click', () => { this.elements.offlineOverlay.hidden = true; }, { once: true });
+  }
+
+  renderShipTray(snapshot) {
+    const ships = snapshot.friendlies.filter((ship) => ship.role !== 'command' && ship.alive);
+    this.elements.shipTray.replaceChildren();
+    for (const ship of ships) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ship-tray__ship';
+      button.dataset.shipSlot = String(ship.slot);
+      button.textContent = ship.role === 'escort' ? 'ESC' : ship.role.slice(0, 3).toUpperCase();
+      button.setAttribute('aria-label', `Deploy ${ship.role} from reserve`);
+      this.elements.shipTray.appendChild(button);
+    }
   }
 
   beginOnboarding() {

@@ -42,6 +42,14 @@ export class RunProgression {
     return result;
   }
 
+  resetUpgrades() {
+    const refund = this.upgrades.reset();
+    if (refund <= 0) return { reset: false, reason: 'no-upgrades', refund: 0, currency: this.currency };
+    this.currency += refund;
+    this.onChange();
+    return { reset: true, refund, currency: this.currency };
+  }
+
   snapshot() {
     return {
       salvage: this.currency,

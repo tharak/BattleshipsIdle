@@ -435,9 +435,11 @@ export class GameRenderer {
 
   syncFormationEditor(formation) {
     const preview = formation?.preview;
-    this.formationEditor.visible = Boolean(preview);
-    if (!preview) return;
+    this.formationEditor.visible = Boolean(formation?.placement);
+    if (!formation?.placement) return;
     this.refreshFormationGrid(formation.placement);
+    this.formationGhost.visible = Boolean(preview);
+    if (!preview) return;
     this.formationGhost.position.set(preview.candidate.x, preview.candidate.y, 0.05);
     const color = preview.valid ? RENDER_COLORS.placementValid : RENDER_COLORS.placementInvalid;
     for (const child of this.formationGhost.children) child.material.color.setHex(color);
@@ -1022,6 +1024,7 @@ export class GameRenderer {
         this.entityMeshes.set(entity.id, group);
       }
       group.position.set(entity.x, entity.y, 0);
+      group.visible = entity.deployed !== false && entity.inReserve !== true;
       const healthRatio = Math.max(RENDERING.ships.minimumHealthRatio, entity.health / entity.maxHealth);
       if (group.userData.health) {
         const healthFill = group.userData.health.userData.fill;

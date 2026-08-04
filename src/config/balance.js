@@ -15,6 +15,7 @@ export const FLEET = Object.freeze({
   lancerHealth: 78,
   guardianHealth: 158,
   commandDamage: 17,
+  commandHalfWidth: 4.8,
   escortDamage: 10,
   lancerDamage: 11,
   guardianDamage: 7.5,
@@ -82,7 +83,7 @@ export const WAVE_FLOW = Object.freeze({
   enemyAdvanceDistance: 25,
   enemyApproachSpeed: 22,
   arrivalTolerance: 0.05,
-  flagshipPathHalfWidth: 2.6,
+  flagshipPathHalfWidth: FLEET.commandHalfWidth,
   flagshipDashSpeed: 145,
   flagshipExitPadding: 12,
 });
@@ -109,8 +110,8 @@ export const FORMATION_EDITOR = Object.freeze({
   horizontalPadding: 5,
   basePlacementHalfWidth: 35,
   placementHalfWidthPerLevel: 0.75,
-  fleetZoneTopRatio: 0.25,
-  fleetZoneBottomPadding: 18,
+  fleetZoneTopRatio: 0.42,
+  fleetZoneBottomPadding: 10,
 });
 
 export const GEOMETRY_BONUSES = Object.freeze({

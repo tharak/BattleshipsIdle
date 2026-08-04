@@ -929,6 +929,16 @@ export class GameSimulation {
     return { dragging: true, shipId: ship.id, slot: ship.slot, preview };
   }
 
+  beginShipDragBySlot(slot) {
+    const ship = this.friendlies.find((candidate) => candidate.slot === slot && candidate.alive);
+    if (!ship || !this.canEditFormation() || this.status === 'paused' || this.suspended) {
+      return { dragging: false, reason: 'inactive' };
+    }
+    this.formationSystem.previewPlacement(slot, ship.x, ship.y, this.friendlies);
+    this.emit('formationDragStarted', { shipId: ship.id, slot });
+    return { dragging: true, shipId: ship.id, slot };
+  }
+
   previewShipDrag(x, y) {
     if (!this.formationSystem.dragState) return { dragging: false, reason: 'no-drag' };
     const preview = this.formationSystem.previewPlacement(
@@ -949,7 +959,7 @@ export class GameSimulation {
       this.emit('formationShipMoved', {
         slot: result.slot,
         position: result.position,
-        paths: result.path ? [result.path] : [],
+        paths: [result.path, result.swappedPath].filter(Boolean),
       });
       this.onStateChange();
     } else if (result.reason !== 'cancelled') {
@@ -972,9 +982,20 @@ export class GameSimulation {
     return result;
   }
 
+  resetUpgrades() {
+    const result = this.progression.resetUpgrades();
+    if (!result.reset) return result;
+    this.applyFleetUpgrades();
+    this.emit('upgradesReset', { refund: result.refund });
+    return result;
+  }
+
   applyFleetUpgrades(purchasedId) {
     this.formationSystem.setCommandNetworkLevel(this.progression.upgrades.commandNetworkLevel);
     const desiredCount = this.progression.upgrades.fleetSize;
+    if (this.friendlies.length > desiredCount) {
+      this.friendlies = this.friendlies.filter((ship) => ship.role === 'command' || ship.slot < desiredCount);
+    }
     if (purchasedId === 'fleetSize') {
       const slot = desiredCount - 1;
       if (!this.friendlies.some((ship) => ship.slot === slot)) {
@@ -1102,6 +1123,10 @@ export class GameSimulation {
 
   resolveWaveIfNeeded() {
     if (this.status !== 'running' || this.wavePhase !== 'combat') return;
+    if (!this.enemies.some((enemy) => enemy.alive)) {
+      this.advanceToNextWave({ automatic: true });
+      return;
+    }
     this.updateAdvanceAvailability();
   }
 
@@ -1135,7 +1160,7 @@ export class GameSimulation {
     return available;
   }
 
-  advanceToNextWave() {
+  advanceToNextWave({ automatic = false } = {}) {
     if (this.status !== 'running' || this.wavePhase !== 'combat') {
       return { advancing: false, reason: 'inactive' };
     }
@@ -1163,6 +1188,7 @@ export class GameSimulation {
     this.emit('flagshipAdvanceStarted', {
       wave: this.wave,
       remainingEnemies: this.enemies.filter((enemy) => enemy.alive).length,
+      automatic,
       path: {
         shipId: command.id,
         from: { x: command.x, y: command.y },

@@ -265,23 +265,31 @@ export class FormationSystem {
   applyInitialPositions(friendlies) {
     const positions = this.getPositionsForFleet(friendlies);
     friendlies.forEach((ship, index) => {
+      // The deployment begins with only the flagship on the tactical grid.
+      // Escorts retain their tactical coordinates for simulation, but are visually
+      // held in the reserve tray until the player deploys them.
+      const reserve = ship.role !== 'command';
       ship.x = positions[index].x;
       ship.y = positions[index].y;
       ship.targetX = ship.x;
       ship.targetY = ship.y;
       ship.moving = false;
+      ship.deployed = true;
+      ship.inReserve = reserve;
     });
     this.movingSlots.clear();
   }
 
   moveFleetToActiveLoadout(friendlies, { startCooldown = false } = {}) {
     const positions = this.getPositionsForFleet(friendlies);
-    const paths = friendlies.map((ship, index) => this.moveShip(ship, positions[index]));
+    const paths = friendlies.map((ship, index) => this.moveShip(ship, positions[index], { reveal: false }));
     if (startCooldown) this.cooldownRemaining = FORMATION_CHANGE.cooldown;
     return paths;
   }
 
-  moveShip(ship, target) {
+  moveShip(ship, target, { reveal = true } = {}) {
+    ship.deployed = true;
+    if (reveal) ship.inReserve = false;
     const from = { x: ship.x, y: ship.y };
     ship.targetX = target.x;
     ship.targetY = target.y;
@@ -332,13 +340,20 @@ export class FormationSystem {
     const loadoutSlots = this.activeLoadout.slots;
     const insideBounds = loadoutCandidate.x >= bounds.minX && loadoutCandidate.x <= bounds.maxX
       && loadoutCandidate.y >= bounds.minY && loadoutCandidate.y <= bounds.maxY;
+    const occupied = loadoutSlots.find((position) => position.slot !== slot
+      && distance(position, loadoutCandidate) < FORMATION_EDITOR.minimumSeparation);
+    // Dropping on another ship is intentional: the two ships exchange positions.
+    // Only reject a drop when it lands between slots or outside the editor.
     const separated = loadoutSlots.every((position) => position.slot === slot
+      || position === occupied
       || distance(position, loadoutCandidate) >= FORMATION_EDITOR.minimumSeparation);
     const valid = insideBounds && separated;
     const positions = friendlies
       .filter((ship) => ship.alive !== false)
       .map((ship) => ship.slot === slot
         ? { slot: ship.slot, role: ship.role, ...candidate }
+        : occupied && ship.slot === occupied.slot
+          ? { slot: ship.slot, role: ship.role, ...this.toWorldPoint({ x: loadoutSlots.find((position) => position.slot === slot).x, y: loadoutSlots.find((position) => position.slot === slot).y }) }
         : { slot: ship.slot, role: ship.role, x: ship.x, y: ship.y });
     const currentModifiers = this.getModifiers(friendlies);
     const previewModifiers = this.getModifiersFromPositions(positions, friendlies);
@@ -349,6 +364,7 @@ export class FormationSystem {
       loadoutCandidate,
       valid,
       reason: !insideBounds ? 'outside-fleet-zone' : !separated ? 'overlap' : null,
+      swapSlot: occupied?.slot ?? null,
       modifiers: previewModifiers,
       changes: Object.fromEntries(Object.keys(previewModifiers).map((key) => [key, round(previewModifiers[key] - currentModifiers[key])])),
     };
@@ -361,17 +377,30 @@ export class FormationSystem {
     if (!preview?.valid) return { changed: false, reason: preview?.reason ?? 'no-drag', preview };
     const position = this.activeLoadout.slots.find((slot) => slot.slot === preview.slot);
     if (!position) return { changed: false, reason: 'unknown-slot', preview };
+    const swappedPosition = preview.swapSlot === null
+      ? null
+      : this.activeLoadout.slots.find((candidate) => candidate.slot === preview.swapSlot);
+    const original = { x: position.x, y: position.y };
     position.x = preview.loadoutCandidate.x;
     position.y = preview.loadoutCandidate.y;
     this.activeLoadout.templateId = null;
     const ship = friendlies.find((candidate) => candidate.slot === preview.slot);
     const path = ship ? this.moveShip(ship, preview.candidate) : null;
+    const swappedShip = friendlies.find((candidate) => candidate.slot === preview.swapSlot);
+    const swappedPath = swappedPosition && swappedShip
+      ? this.moveShip(swappedShip, this.toWorldPoint(original))
+      : null;
+    if (swappedPosition) {
+      swappedPosition.x = original.x;
+      swappedPosition.y = original.y;
+    }
     return {
       changed: true,
       slot: preview.slot,
       position: { ...preview.loadoutCandidate },
       worldPosition: { ...preview.candidate },
       path,
+      swappedPath,
       preview,
     };
   }

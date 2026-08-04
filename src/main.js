@@ -101,6 +101,12 @@ const hud = new HudController({
     persistNow();
     return { ...result, snapshot: simulation.getSnapshot() };
   },
+  onResetUpgrades: () => {
+    const result = simulation.resetUpgrades();
+    consumeAndDispatchEvents();
+    persistNow();
+    return { ...result, snapshot: simulation.getSnapshot() };
+  },
   onOnboardingComplete: () => {
     persistentState.onboardingComplete = true;
     persistNow();
@@ -123,6 +129,23 @@ const targetingInput = new TargetingInput({
     consumeAndDispatchEvents();
   },
   onFormationEnd: (_point, { cancelled }) => {
+    const result = simulation.commitShipDrag({ cancelled });
+    consumeAndDispatchEvents();
+    if (result.changed) persistNow();
+  },
+  onReserveDragStart: (slot) => {
+    const result = simulation.beginShipDragBySlot(slot);
+    consumeAndDispatchEvents();
+    return result;
+  },
+  onReserveDragMove: (clientX, clientY) => {
+    const point = gameRenderer.screenToWorld(clientX, clientY);
+    if (point) simulation.previewShipDrag(point.x, point.y);
+    consumeAndDispatchEvents();
+  },
+  onReserveDragEnd: (clientX, clientY, cancelled) => {
+    const point = gameRenderer.screenToWorld(clientX, clientY);
+    if (point && !cancelled) simulation.previewShipDrag(point.x, point.y);
     const result = simulation.commitShipDrag({ cancelled });
     consumeAndDispatchEvents();
     if (result.changed) persistNow();
