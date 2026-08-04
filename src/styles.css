@@ -1518,6 +1518,8 @@ button:focus-visible {
 
 .deployment-budget strong { color: var(--gold); font: 700 27px/1 "Chakra Petch", sans-serif; }
 .deployment-budget span { color: var(--muted); font: 700 7px/1.2 "Chakra Petch", sans-serif; letter-spacing: .1em; }
+.formation-clear-button { margin-top: 5px; padding: 3px 2px; border: 1px solid rgba(255, 89, 111, .45); color: var(--red); background: rgba(60, 17, 32, .72); font: 700 7px/1 "Chakra Petch", sans-serif; letter-spacing: .04em; cursor: pointer; }
+.formation-clear-button:disabled { cursor: default; opacity: .35; }
 
 .ship-roster {
   grid-area: roster;

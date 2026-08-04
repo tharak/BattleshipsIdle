@@ -36,7 +36,6 @@ simulation = new GameSimulation({
   progressionState: persistentState,
   formationLoadouts: persistentState.formationLoadouts,
   activeLoadoutIndex: persistentState.activeLoadoutIndex,
-  formationDeployment: persistentState.formationDeployment,
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);
@@ -84,6 +83,12 @@ const hud = new HudController({
     const result = simulation.buyShipType(role);
     consumeAndDispatchEvents();
     if (result.purchased) persistNow();
+    return result;
+  },
+  onRemoveAll: () => {
+    const result = simulation.removeAllDeployedShips();
+    consumeAndDispatchEvents();
+    if (result.changed) persistNow();
     return result;
   },
   onShopOpen: () => {

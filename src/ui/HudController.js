@@ -19,6 +19,7 @@ export class HudController {
     onAdvance,
     onDeployShip,
     onBuyShip = () => {},
+    onRemoveAll = () => {},
     onShopOpen,
     onShopClose,
     onUpgrade,
@@ -49,6 +50,7 @@ export class HudController {
       waveActionHint: document.querySelector('#wave-action-hint'),
       shipTypeButtons: [...document.querySelectorAll('[data-ship-role]')],
       deploymentCount: document.querySelector('#deployment-count'),
+      removeAllButton: document.querySelector('#remove-all-button'),
       shopButton: document.querySelector('#shop-button'),
       startShopButton: document.querySelector('#start-shop-button'),
       gameoverShopButton: document.querySelector('#gameover-shop-button'),
@@ -89,6 +91,7 @@ export class HudController {
         else onDeployShip(button.dataset.shipRole);
       });
     }
+    this.elements.removeAllButton.addEventListener('click', onRemoveAll);
     this.onUpgrade = onUpgrade;
     this.onResetUpgrades = onResetUpgrades;
     this.elements.newGameButton.addEventListener('click', onNewGame);
@@ -138,6 +141,9 @@ export class HudController {
     const { formation } = snapshot;
     const waveState = snapshot.waveState ?? { phase: 'idle' };
     this.elements.deploymentCount.textContent = String(snapshot.deployment?.remaining ?? 0);
+    this.elements.removeAllButton.disabled = (snapshot.deployment?.deployedShipSlots?.length ?? 0) === 0
+      || snapshot.status !== 'running'
+      || !['deployment', 'intermission'].includes(waveState.phase);
     this.renderShipRoster(snapshot);
     this.elements.shipTypeButtons.forEach((button) => {
       button.disabled = snapshot.status !== 'running' || waveState.phase !== 'deployment';

@@ -102,14 +102,10 @@ export class GameSimulation {
     selectedFormation = 'line',
     formationLoadouts,
     activeLoadoutIndex = 0,
-    formationDeployment = [],
     onStateChange = () => {},
   } = {}) {
     this.random = random;
     this.onStateChange = onStateChange;
-    this.initialFormationDeployment = new Set(
-      formationDeployment.filter((entry) => entry?.deployed === true).map((entry) => entry.slot),
-    );
     this.progression = new RunProgression({ state: progressionState, onChange: onStateChange });
     this.formationSystem = new FormationSystem({
       initialTemplateId: selectedFormation,
@@ -132,6 +128,7 @@ export class GameSimulation {
     this.waveIntermission = 0;
     this.waveResolved = false;
     this.deploymentsRemaining = 0;
+    this.deployedShipSlots = [];
     this.enemyFormationId = null;
     this.advanceAvailable = false;
     this.flagshipPathBlockerIds = [];
@@ -243,17 +240,15 @@ export class GameSimulation {
     this.projectiles = [];
     this.telegraphs = [];
     this.formationSystem.setWorldOffset(0, 0);
+    this.deployedShipSlots = this.deployedShipSlots.filter((slot) => this.friendlies.some((ship) => ship.slot === slot));
     this.formationSystem.applyInitialPositions(this.friendlies);
-    if (this.wave === 1 && this.initialFormationDeployment.size > 0) {
-      let restoredDeployments = 0;
+    if (this.deployedShipSlots.length > 0) {
       for (const ship of this.friendlies) {
-        if (ship.role !== 'command' && this.initialFormationDeployment.has(ship.slot)) {
+        if (ship.role !== 'command' && this.deployedShipSlots.includes(ship.slot)) {
           ship.inReserve = false;
-          restoredDeployments += 1;
         }
       }
-      this.deploymentsRemaining = Math.max(0, DEPLOYMENT_CAPACITY - restoredDeployments);
-      this.initialFormationDeployment.clear();
+      this.deploymentsRemaining = Math.max(0, DEPLOYMENT_CAPACITY - this.deployedShipSlots.length);
     }
     for (const ship of this.friendlies) ship.dashing = false;
     const stats = getEnemyStats(this.wave);
@@ -968,10 +963,32 @@ export class GameSimulation {
     const target = positions[this.friendlies.indexOf(ship)];
     ship.inReserve = false;
     this.deploymentsRemaining -= 1;
+    this.deployedShipSlots.push(ship.slot);
     const path = this.formationSystem.moveShip(ship, target);
       this.emit('formationShipDeployed', { shipId: ship.id, role, slot: ship.slot, path });
     this.onStateChange();
     return { changed: true, role, slot: ship.slot, path };
+  }
+
+  removeAllDeployedShips() {
+    if (this.status !== 'running' || !['deployment', 'intermission'].includes(this.wavePhase) || this.suspended) {
+      return { changed: false, reason: 'inactive' };
+    }
+    const removed = this.deployedShipSlots.length;
+    if (removed === 0) return { changed: false, reason: 'empty' };
+    for (const ship of this.friendlies) {
+      if (ship.role !== 'command' && this.deployedShipSlots.includes(ship.slot)) {
+        ship.inReserve = true;
+        ship.moving = false;
+        ship.targetX = ship.x;
+        ship.targetY = ship.y;
+      }
+    }
+    this.deployedShipSlots = [];
+    this.deploymentsRemaining = DEPLOYMENT_CAPACITY;
+    this.emit('formationCleared', { removed });
+    this.onStateChange();
+    return { changed: true, removed };
   }
 
   buyShipType(role) {
@@ -1421,6 +1438,7 @@ export class GameSimulation {
       deployment: {
         remaining: this.deploymentsRemaining,
         capacity: DEPLOYMENT_CAPACITY,
+        deployedShipSlots: [...this.deployedShipSlots],
       },
       waveState: {
         phase: this.wavePhase,
@@ -1505,9 +1523,7 @@ export class GameSimulation {
       ...this.progression.exportState(),
       formationLoadouts: this.formationSystem.exportLoadouts(),
       activeLoadoutIndex: this.formationSystem.activeLoadoutIndex,
-      formationDeployment: this.friendlies
-        .filter((ship) => ship.role !== 'command')
-        .map((ship) => ({ slot: ship.slot, deployed: ship.inReserve !== true })),
+      deployedShipSlots: [...this.deployedShipSlots],
     };
   }
 
