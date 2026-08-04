@@ -102,10 +102,14 @@ export class GameSimulation {
     selectedFormation = 'line',
     formationLoadouts,
     activeLoadoutIndex = 0,
+    formationDeployment = [],
     onStateChange = () => {},
   } = {}) {
     this.random = random;
     this.onStateChange = onStateChange;
+    this.initialFormationDeployment = new Set(
+      formationDeployment.filter((entry) => entry?.deployed === true).map((entry) => entry.slot),
+    );
     this.progression = new RunProgression({ state: progressionState, onChange: onStateChange });
     this.formationSystem = new FormationSystem({
       initialTemplateId: selectedFormation,
@@ -240,6 +244,17 @@ export class GameSimulation {
     this.telegraphs = [];
     this.formationSystem.setWorldOffset(0, 0);
     this.formationSystem.applyInitialPositions(this.friendlies);
+    if (this.wave === 1 && this.initialFormationDeployment.size > 0) {
+      let restoredDeployments = 0;
+      for (const ship of this.friendlies) {
+        if (ship.role !== 'command' && this.initialFormationDeployment.has(ship.slot)) {
+          ship.inReserve = false;
+          restoredDeployments += 1;
+        }
+      }
+      this.deploymentsRemaining = Math.max(0, DEPLOYMENT_CAPACITY - restoredDeployments);
+      this.initialFormationDeployment.clear();
+    }
     for (const ship of this.friendlies) ship.dashing = false;
     const stats = getEnemyStats(this.wave);
     const bossWave = isBossWave(this.wave);
@@ -1490,6 +1505,9 @@ export class GameSimulation {
       ...this.progression.exportState(),
       formationLoadouts: this.formationSystem.exportLoadouts(),
       activeLoadoutIndex: this.formationSystem.activeLoadoutIndex,
+      formationDeployment: this.friendlies
+        .filter((ship) => ship.role !== 'command')
+        .map((ship) => ({ slot: ship.slot, deployed: ship.inReserve !== true })),
     };
   }
 

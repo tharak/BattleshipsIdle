@@ -36,6 +36,7 @@ simulation = new GameSimulation({
   progressionState: persistentState,
   formationLoadouts: persistentState.formationLoadouts,
   activeLoadoutIndex: persistentState.activeLoadoutIndex,
+  formationDeployment: persistentState.formationDeployment,
   onStateChange: schedulePersist,
 });
 const gameRenderer = new GameRenderer(battlefield);

@@ -19,6 +19,7 @@ export function createDefaultSave(now = Date.now()) {
     totalDestroyed: 0,
     formationLoadouts: createStarterLoadouts('line'),
     activeLoadoutIndex: 0,
+    formationDeployment: [],
     lastSeen: now,
     onboardingComplete: false,
     settings: { sound: true, screenShake: true },
@@ -46,6 +47,11 @@ export function migrateSave(source, now = Date.now()) {
   const activeLoadoutIndex = legacy
     ? 0
     : Math.max(0, Math.min(2, Math.floor(Number(parsed.activeLoadoutIndex) || 0)));
+  const formationDeployment = Array.isArray(parsed.formationDeployment)
+    ? parsed.formationDeployment
+      .map((entry) => ({ slot: Math.max(0, Math.floor(Number(entry?.slot))), deployed: entry?.deployed === true }))
+      .filter((entry) => Number.isFinite(entry.slot))
+    : [];
 
   return {
     ...defaults,
@@ -56,6 +62,7 @@ export function migrateSave(source, now = Date.now()) {
     settings: { ...defaults.settings, ...(parsed.settings ?? {}) },
     formationLoadouts,
     activeLoadoutIndex,
+    formationDeployment,
   };
 }
 
