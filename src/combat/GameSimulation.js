@@ -412,7 +412,7 @@ export class GameSimulation {
 
   updateFriendlies(dt) {
     for (const ship of this.friendlies) {
-      if (!ship.alive || ship.role === 'command') continue;
+      if (!ship.alive || ship.inReserve || ship.role === 'command') continue;
       ship.fireCooldown -= dt;
       if (ship.fireCooldown > 0) continue;
 
@@ -539,7 +539,7 @@ export class GameSimulation {
   }
 
   resolveTelegraph(telegraph) {
-    const targets = this.friendlies.filter((ship) => ship.alive);
+    const targets = this.friendlies.filter((ship) => ship.alive && !ship.inReserve);
     const hitTargets = targets.filter((ship) => {
       if (telegraph.kind === 'blast') {
         return distanceSquared(ship, telegraph) <= telegraph.radius ** 2;
@@ -1330,7 +1330,7 @@ export class GameSimulation {
 
   pickEnemyTarget(enemy) {
     const maximumDistance = ENEMIES.effectiveRange ** 2;
-    const alive = this.friendlies.filter((ship) => ship.alive
+    const alive = this.friendlies.filter((ship) => ship.alive && !ship.inReserve
       && distanceSquared(enemy, ship) <= maximumDistance);
     if (alive.length === 0) return null;
     const command = alive.find((ship) => ship.role === 'command');

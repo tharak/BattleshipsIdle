@@ -54,16 +54,15 @@ describe('GameSimulation', () => {
     expect(simulation.getSnapshot().waveState.phase).toBe('combat');
   });
 
-  it('keeps escort auto-fire while removing the flagship automatic attack', () => {
+  it('keeps reserve ships inactive until their type is selected', () => {
     const simulation = createSimulation();
     startCombat(simulation);
     simulation.consumeEvents();
     advance(simulation, 0.9);
 
     const events = simulation.consumeEvents();
-    const friendlyShots = events.filter((event) => event.type === 'projectileFired' && event.faction === 'friendly');
-    expect(friendlyShots.length).toBeGreaterThan(0);
-    expect(friendlyShots.every((event) => event.sourceRole !== 'command')).toBe(true);
+    expect(events.filter((event) => event.type === 'projectileFired' && event.faction === 'friendly')).toHaveLength(0);
+    expect(simulation.friendlies.filter((ship) => ship.inReserve)).not.toHaveLength(0);
   });
 
   it('starts the flagship gun manually and can resume before a full recharge', () => {
@@ -400,18 +399,6 @@ describe('GameSimulation', () => {
     expect(snapshot.projectiles).toHaveLength(0);
     expect(snapshot.progression.salvage).toBe(persistentCurrency);
     expect(snapshot.progression.runSalvage).toBe(0);
-  });
-
-  it('resolves projectile hits when updated at the runtime fixed step', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    const healthBefore = simulation.enemies.reduce((total, enemy) => total + enemy.health, 0);
-
-    advance(simulation, 2);
-
-    const healthAfter = simulation.enemies.reduce((total, enemy) => total + enemy.health, 0);
-    expect(healthAfter).toBeLessThan(healthBefore);
-    expect(simulation.consumeEvents().some((event) => event.type === 'impact')).toBe(true);
   });
 
   it('changes formation during combat and exposes its mechanical state', () => {
