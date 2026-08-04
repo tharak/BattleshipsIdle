@@ -208,7 +208,7 @@ export class HudController {
     } else if (formation.isTransitioning) {
       this.elements.formationState.textContent = `${formation.movingShips.length} ship${formation.movingShips.length === 1 ? '' : 's'} maneuvering`;
     } else if (waveState.phase === 'deployment') {
-      this.elements.formationState.textContent = `${waveState.enemyFormationName} sighted · position fleet`;
+      this.elements.formationState.textContent = `${waveState.enemyFormationName} sighted · drag reserve ships onto the grid`;
     } else if (waveState.phase === 'approach') {
       this.elements.formationState.textContent = 'Fleets closing · weapons held';
     } else if (waveState.phase === 'extraction') {
@@ -414,7 +414,7 @@ export class HudController {
     if (this.onboardingComplete) return;
     this.onboardingStage = 1;
     this.elements.coachmarkTitle.textContent = 'Read, then deploy';
-    this.elements.coachmarkDetail.textContent = 'Study the revealed enemy formation, position your ships, then press Ready at center screen.';
+    this.elements.coachmarkDetail.textContent = 'Press and hold a ship in RESERVE, drag it onto the highlighted grid, then press Ready.';
     this.elements.coachmark.hidden = false;
   }
 

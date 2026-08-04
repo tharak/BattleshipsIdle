@@ -1170,7 +1170,7 @@ button:focus-visible {
 
 .ship-tray::before {
   color: var(--muted);
-  content: 'RESERVE';
+  content: 'RESERVE · DRAG TO GRID';
   font: 700 7px "Chakra Petch", sans-serif;
   letter-spacing: .12em;
 }
