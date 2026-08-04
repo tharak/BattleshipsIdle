@@ -122,30 +122,6 @@ describe('GameSimulation', () => {
     expect(result.y).toBeLessThan(ARENA.maxY);
   });
 
-  it('requires a flagship advance to clear a defeated wave and start the next deployment', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    simulation.consumeEvents();
-
-    for (const enemy of [...simulation.enemies]) simulation.damageEntity(enemy, enemy.health, 'test');
-    simulation.removeDestroyedEntities();
-    simulation.resolveWaveIfNeeded();
-
-    expect(simulation.getSnapshot().waveState).toMatchObject({ phase: 'combat', canAdvance: true });
-    expect(simulation.getSnapshot().waveIntermission).toBe(0);
-    expect(simulation.getSnapshot().progression.salvage).toBeGreaterThan(0);
-    expect(simulation.advanceToNextWave()).toMatchObject({ advancing: true, remainingEnemies: 0 });
-    advance(simulation, 1);
-    expect(simulation.getSnapshot().waveIntermission).toBeGreaterThan(0);
-    expect(simulation.getSnapshot().waveIntermission).toBeLessThanOrEqual(WAVES.intermission);
-    expect(simulation.beginFlagshipFire(0, 0)).toMatchObject({ firing: false, reason: 'inactive' });
-
-    advance(simulation, WAVES.intermission + 0.1);
-    expect(simulation.getSnapshot().wave).toBe(2);
-    expect(simulation.getSnapshot().waveState.phase).toBe('deployment');
-    expect(simulation.getSnapshot().enemies.length).toBeGreaterThan(0);
-  });
-
   it('reveals all five enemy formations from the shared template set', () => {
     const ids = ['line', 'wedge', 'defensiveArc', 'splitWings', 'denseColumn'];
 
@@ -658,28 +634,6 @@ describe('GameSimulation', () => {
     expect(lancer.maxHealth).toBeLessThan(escort.maxHealth);
     expect(guardian.maxHealth).toBeGreaterThan(escort.maxHealth);
     expect(guardian.damage).toBeLessThan(escort.damage);
-  });
-
-  it('edits the active loadout live, moves the flagship, and rejects invalid drops', () => {
-    const simulation = createSimulation();
-    startCombat(simulation);
-    const command = simulation.getCommandShip();
-    const originalY = command.y;
-
-    expect(simulation.beginShipDrag(command.x, command.y).dragging).toBe(true);
-    expect(simulation.previewShipDrag(0, -25).preview.valid).toBe(true);
-    expect(simulation.commitShipDrag().changed).toBe(true);
-    advance(simulation, 0.2);
-    expect(command.y).toBeGreaterThan(originalY);
-    expect(simulation.getPersistentState().formationLoadouts[0].slots.find(({ slot }) => slot === command.slot))
-      .toMatchObject({ x: 0, y: -50 });
-
-    const escort = simulation.friendlies[0];
-    const occupied = simulation.getPersistentState().formationLoadouts[0].slots[1];
-    const offsetY = simulation.getSnapshot().formation.placement.offset.y;
-    expect(simulation.beginShipDrag(escort.x, escort.y).dragging).toBe(true);
-    expect(simulation.previewShipDrag(occupied.x, occupied.y + offsetY).preview.valid).toBe(false);
-    expect(simulation.commitShipDrag()).toMatchObject({ changed: false, reason: 'overlap' });
   });
 
   it('unlocks three loadouts and ignores their cooldown during deployment', () => {

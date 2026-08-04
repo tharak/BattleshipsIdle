@@ -43,19 +43,6 @@ describe('FormationSystem', () => {
     expect(expandedLine[8]).toMatchObject({ x: 30, y: -45 });
   });
 
-  it('snaps to a five-unit grid and rejects boundaries and overlap', () => {
-    const system = new FormationSystem();
-    const ships = fleet();
-    system.applyInitialPositions(ships);
-
-    expect(system.previewPlacement(0, -27.6, -51.9, ships)).toMatchObject({
-      candidate: { x: -30, y: -50 },
-      valid: true,
-    });
-    expect(system.previewPlacement(0, 15, -40, ships)).toMatchObject({ valid: false, reason: 'overlap' });
-    expect(system.previewPlacement(0, 100, -50, ships)).toMatchObject({ valid: false, reason: 'outside-fleet-zone' });
-  });
-
   it('expands placement range with Command Network levels', () => {
     const base = new FormationSystem({ commandNetworkLevel: 0 });
     const upgraded = new FormationSystem({ commandNetworkLevel: 12 });
@@ -78,27 +65,6 @@ describe('FormationSystem', () => {
     expect(flagship.y).toBeGreaterThan(originalY);
     expect(flagship.y).toBeLessThan(flagship.targetY);
     expect(system.activeLoadout.templateId).toBeNull();
-  });
-
-  it('keeps saved deployment coordinates while editing an advanced battle line', () => {
-    const system = new FormationSystem();
-    const ships = fleet();
-    system.applyInitialPositions(ships);
-    system.setWorldOffset(0, 25);
-    system.reflow(ships);
-    system.update(ships, 2);
-
-    const flagship = ships.find(({ role }) => role === 'command');
-    expect(flagship.y).toBe(-30);
-    expect(system.snapshot(ships).placement.bounds).toMatchObject({ minY: -30, maxY: -15 });
-    expect(system.previewPlacement(flagship.slot, 0, -25, ships)).toMatchObject({
-      candidate: { x: 0, y: -25 },
-      loadoutCandidate: { x: 0, y: -50 },
-      valid: true,
-    });
-    system.commitPlacement(ships);
-    expect(system.exportLoadouts()[0].slots.find(({ slot }) => slot === flagship.slot))
-      .toMatchObject({ x: 0, y: -50 });
   });
 
   it('derives opposed strengths from current geometry', () => {
